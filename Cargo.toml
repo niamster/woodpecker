@@ -3,5 +3,12 @@ name = "woodpecker"
 version = "0.1.0"
 authors = ["Dmytro Milinevskyy <milinevskyy@gmail.com>"]
 
+[[bench]]
+name = "benches"
+harness = false
+
 [dependencies]
 chrono = "0.3"
+
+[dev-dependencies]
+bencher = "0.1"

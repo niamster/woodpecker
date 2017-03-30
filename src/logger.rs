@@ -457,7 +457,7 @@ macro_rules! critical {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
 
     use std::mem;
