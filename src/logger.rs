@@ -86,7 +86,7 @@ impl<'a> Record<'a> {
             let mut msg = msg.write().unwrap();
             if msg.is_none() {
                 let mut mstr = String::new();
-                mstr.write_fmt(*self.args.clone()).unwrap();
+                mstr.write_fmt(*self.args).unwrap();
 
                 *msg = Some(Arc::new(Box::new(mstr)));
             }
@@ -209,7 +209,7 @@ impl<'a> RootLogger<'a> {
         self.handlers = LinkedList::new();
     }
 
-    fn get_logger_slow<'b>(&self, module: &'static str, file: &'static str)
+    fn logger_slow<'b>(&self, module: &'static str, file: &'static str)
                            -> Arc<Logger> {
         let mut logger = self.root.clone();
 
@@ -234,17 +234,6 @@ impl<'a> RootLogger<'a> {
         }
 
         logger
-    }
-
-    #[inline]
-    fn get_logger<'b>(&self, module: &'static str, file: &'static str)
-                      -> Arc<Logger> {
-        let logger = self.root.clone();
-        if logger.sub.is_empty() {
-            logger
-        } else {
-            self.get_logger_slow(module, file)
-        }
     }
 }
 
@@ -275,7 +264,7 @@ impl<'a> RootLogger<'a> {
         logger.sublevel(LPath::new(path).iter(), level);
     }
 
-    pub fn logger(&self, path: &String) -> Arc<Logger> {
+    pub fn logger_by_path(&self, path: &String) -> Arc<Logger> {
         let mut logger = self.root.clone();
 
         for path in path.split("::") {
@@ -293,13 +282,18 @@ impl<'a> RootLogger<'a> {
         logger
     }
 
-    pub fn log(&self, level: LogLevel, module: &'static str, file: &'static str, line: u32, args: fmt::Arguments) {
-        let logger = self.get_logger(module, file);
-
-        if logger.level > level {
-            return;
+    #[inline(always)]
+    pub fn logger<'b>(&self, module: &'static str, file: &'static str)
+                      -> Arc<Logger> {
+        let logger = self.root.clone();
+        if logger.sub.is_empty() {
+            logger
+        } else {
+            self.logger_slow(module, file)
         }
+    }
 
+    pub fn log(&self, level: LogLevel, module: &'static str, file: &'static str, line: u32, args: fmt::Arguments) {
         let record = Record::new(level, module, file, line, UTC::now(), args, &self.formatter);
 
         if self.handlers.is_empty() {
@@ -312,29 +306,18 @@ impl<'a> RootLogger<'a> {
     }
 }
 
-#[derive(Clone)]
-struct LoggersReader<'a> {
-    inner: Arc<RwLock<RootLogger<'a>>>
-}
-
-fn loggers() -> LoggersReader<'static> {
-    static mut LOGGERS: *const LoggersReader<'static> = 0 as *const LoggersReader;
+#[inline(always)]
+pub fn root() -> Arc<RwLock<RootLogger<'static>>> {
+    static mut LOGGERS: *const Arc<RwLock<RootLogger<'static>>> = 0 as *const Arc<RwLock<RootLogger>>;
     static ONCE: Once = ONCE_INIT;
     unsafe {
         ONCE.call_once(|| {
-            let loggers = LoggersReader {
-                inner: Arc::new(RwLock::new(RootLogger::new())),
-            };
-            LOGGERS = mem::transmute(Box::new(loggers));
+            let root = Arc::new(RwLock::new(RootLogger::new()));
+            LOGGERS = mem::transmute(Box::new(root));
         });
 
         (*LOGGERS).clone()
     }
-}
-
-pub fn root() -> Arc<RwLock<RootLogger<'static>>> {
-    let loggers = loggers();
-    loggers.inner.clone()
 }
 
 pub fn is_string<T: ?Sized + Any>(_: &T) -> bool {
@@ -375,7 +358,7 @@ macro_rules! level {
     // getters
     () => {{
         let root = $crate::logger::root();
-        let root = root.read().unwrap().root().clone();
+        let root = root.read().unwrap().root();
         root.level
     }};
     ($logger:expr) => {{
@@ -386,7 +369,7 @@ macro_rules! level {
             }
             panic!("Logger name must be a string");
         }
-        let logger = root.read().unwrap().logger(&$logger.to_string()).clone();
+        let logger = root.read().unwrap().logger_by_path(&$logger.to_string());
         logger.level
     }};
 }
@@ -417,7 +400,11 @@ macro_rules! formatter {
 macro_rules! log {
     ($level:expr, $($arg:tt)*) => {{
         let root = $crate::logger::root();
-        root.read().unwrap().log($level, module_path!(), file!(), line!(), format_args!($($arg)*));
+        let root = root.read().unwrap();
+        let logger = root.logger(module_path!(), file!());
+        if logger.level <= $level {
+            root.log($level, module_path!(), file!(), line!(), format_args!($($arg)*));
+        }
     }};
 }
 
