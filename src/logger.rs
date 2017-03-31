@@ -10,6 +10,7 @@ use self::chrono::prelude::*;
 use std::mem;
 use std::path;
 use std::sync::{Arc, RwLock, Once, ONCE_INIT};
+use std::sync::atomic::{AtomicIsize, AtomicBool, Ordering, ATOMIC_ISIZE_INIT, ATOMIC_BOOL_INIT};
 use std::collections::HashMap;
 use std::collections::LinkedList;
 use std::fmt;
@@ -21,15 +22,48 @@ use std::any::{Any, TypeId};
 #[derive(PartialEq, PartialOrd, Clone, Copy, Debug)]
 pub enum LogLevel {
     DEBUG,
+    VERBOSE,
     INFO,
+    NOTICE,
     WARN,
     ERROR,
     CRITICAL,
 }
 
-pub const LEVELS: [LogLevel; 5] = [
+impl From<LogLevel> for isize {
+    fn from(orig: LogLevel) -> isize {
+        match orig {
+            LogLevel::DEBUG => -20,
+            LogLevel::VERBOSE => -10,
+            LogLevel::INFO => 0,
+            LogLevel::NOTICE => 10,
+            LogLevel::WARN => 20,
+            LogLevel::ERROR => 30,
+            LogLevel::CRITICAL => 40,
+        }
+    }
+}
+
+impl From<isize> for LogLevel {
+    fn from(orig: isize) -> LogLevel {
+        match orig {
+            -20 => LogLevel::DEBUG,
+            -10 => LogLevel::VERBOSE,
+            0   => LogLevel::INFO,
+            10  => LogLevel::NOTICE,
+            20  => LogLevel::WARN,
+            30  => LogLevel::ERROR,
+            40  => LogLevel::CRITICAL,
+            _   => panic!("Unsupported log level {}", orig),
+        }
+    }
+}
+
+pub const LEVELS: [LogLevel; 7] = [
     LogLevel::DEBUG,
+    LogLevel::VERBOSE,
     LogLevel::INFO,
+    LogLevel::NOTICE,
     LogLevel::WARN,
     LogLevel::ERROR,
     LogLevel::CRITICAL
@@ -40,13 +74,18 @@ impl fmt::Display for LogLevel {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             &LogLevel::DEBUG => write!(f, "DEBUG"),
+            &LogLevel::VERBOSE => write!(f, "VERBOSE"),
             &LogLevel::INFO => write!(f, "INFO"),
+            &LogLevel::NOTICE => write!(f, "NOTICE"),
             &LogLevel::WARN => write!(f, "WARN"),
             &LogLevel::ERROR => write!(f, "ERROR"),
             &LogLevel::CRITICAL => write!(f, "CRITICAL"),
         }
     }
 }
+
+pub static LOG_LEVEL: AtomicIsize = ATOMIC_ISIZE_INIT;
+pub static HAS_SUBLOGGERS: AtomicBool = ATOMIC_BOOL_INIT;
 
 #[derive(Clone)]
 pub struct Record<'a> {
@@ -172,7 +211,7 @@ pub struct Logger {
 impl Logger {
     pub fn new() -> Self {
         Logger {
-            level: LogLevel::WARN,
+            level: LogLevel::from(LOG_LEVEL.load(Ordering::Relaxed)),
             sub: HashMap::new(),
         }
     }
@@ -204,6 +243,8 @@ pub struct RootLogger<'a> {
 impl<'a> RootLogger<'a> {
     #[allow(dead_code)]
     fn reset(&mut self) {
+        LOG_LEVEL.store(isize::from(LogLevel::WARN), Ordering::Relaxed);
+        HAS_SUBLOGGERS.store(false, Ordering::Relaxed);
         self.root = Arc::new(Logger::new());
         self.formatter =  Box::new(::formatters::default::formatter);
         self.handlers = LinkedList::new();
@@ -312,6 +353,7 @@ pub fn root() -> Arc<RwLock<RootLogger<'static>>> {
     static ONCE: Once = ONCE_INIT;
     unsafe {
         ONCE.call_once(|| {
+            LOG_LEVEL.store(isize::from(LogLevel::WARN), Ordering::Relaxed);
             let root = Arc::new(RwLock::new(RootLogger::new()));
             LOGGERS = mem::transmute(Box::new(root));
         });
@@ -350,9 +392,13 @@ macro_rules! level {
             panic!("Logger name must be a string");
         }
         __action!(&$logger.to_string(), level($level));
+        use std::sync::atomic::Ordering;
+        $crate::logger::HAS_SUBLOGGERS.store(true, Ordering::Relaxed);
     }};
     ([ $level:expr ]) => {{
         __action!(level($level));
+        use std::sync::atomic::Ordering;
+        $crate::logger::LOG_LEVEL.store(isize::from($level), Ordering::Relaxed);
     }};
 
     // getters
@@ -399,11 +445,21 @@ macro_rules! formatter {
 #[macro_export]
 macro_rules! log {
     ($level:expr, $($arg:tt)*) => {{
-        let root = $crate::logger::root();
-        let root = root.read().unwrap();
-        let logger = root.logger(module_path!(), file!());
-        if logger.level <= $level {
-            root.log($level, module_path!(), file!(), line!(), format_args!($($arg)*));
+        use std::sync::atomic::Ordering;
+        if $crate::logger::HAS_SUBLOGGERS.load(Ordering::Relaxed) {
+            let root = $crate::logger::root();
+            let root = root.read().unwrap();
+            let logger = root.logger(module_path!(), file!());
+            if logger.level <= $level {
+                root.log($level, module_path!(), file!(), line!(), format_args!($($arg)*));
+            }
+        } else {
+            let level = $crate::logger::LogLevel::from($crate::logger::LOG_LEVEL.load(Ordering::Relaxed));
+            if level <= $level {
+                let root = $crate::logger::root();
+                let root = root.read().unwrap();
+                root.log($level, module_path!(), file!(), line!(), format_args!($($arg)*));
+            }
         }
     }};
 }
