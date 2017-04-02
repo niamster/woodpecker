@@ -2,6 +2,7 @@
 extern crate woodpecker;
 use woodpecker as wp;
 
+use std::fs::remove_file;
 use std::path::Path;
 use std::env;
 use std::process;
@@ -20,6 +21,7 @@ fn main() {
     }));
 
     let args: Vec<_> = env::args().collect();
+    let mut files = Vec::new();
     let mut truncate = true;
     for arg in &args[1..] {
         if &arg[0..1] == "-" {
@@ -29,8 +31,16 @@ fn main() {
                 usage();
             }
         } else {
-            handler!(wp::handlers::file::handler(Path::new(arg), truncate));
+            files.push(arg);
         }
+    }
+
+    for path in &files {
+        let path = Path::new(path);
+        if truncate {
+            let _ = remove_file(path);
+        }
+        handler!(wp::handlers::file::handler(path));
     }
 
     let stdin = std::io::stdin();
