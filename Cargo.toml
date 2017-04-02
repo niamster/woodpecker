@@ -8,6 +8,7 @@ name = "benches"
 harness = false
 
 [dependencies]
+time = "^0.1.36"
 chrono = "0.3"
 
 [dev-dependencies]

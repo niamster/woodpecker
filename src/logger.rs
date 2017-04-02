@@ -7,6 +7,8 @@
 extern crate chrono;
 use self::chrono::prelude::*;
 
+extern crate time;
+
 use std::mem;
 use std::path;
 use std::sync::{Arc, RwLock, Once, ONCE_INIT};
@@ -88,24 +90,81 @@ impl fmt::Display for LogLevel {
 pub static LOG_LEVEL: AtomicIsize = ATOMIC_ISIZE_INIT;
 pub static HAS_SUBLOGGERS: AtomicBool = ATOMIC_BOOL_INIT;
 
+struct PRecord<'a> {
+    msg: RwLock<Option<Arc<Box<String>>>>,
+    formatted: RwLock<Option<Arc<Box<String>>>>,
+    formatter: &'a Formatter<'a>,
+    ts_utc: RwLock<Option<Arc<DateTime<UTC>>>>,
+}
+
+impl<'a> PRecord<'a> {
+    #[inline(always)]
+    fn new(formatter: &'a Formatter<'a>) -> Self {
+        PRecord {
+            msg: RwLock::new(None),
+            formatted: RwLock::new(None),
+            formatter: formatter,
+            ts_utc: RwLock::new(None),
+        }
+    }
+
+    pub fn msg(&self, record: &Record) -> Arc<Box<String>> {
+        {
+            let mut msg = self.msg.write().unwrap();
+            if msg.is_none() {
+                let mut mstr = String::new();
+                mstr.write_fmt(record.args).unwrap();
+
+                *msg = Some(Arc::new(Box::new(mstr)));
+            }
+        }
+        let msg = self.msg.read().unwrap();
+        let msg = msg.as_ref().unwrap();
+        msg.clone()
+    }
+
+    pub fn formatted(&self, record: &Record) -> Arc<Box<String>> {
+        {
+            let mut formatted = self.formatted.write().unwrap();
+            if formatted.is_none() {
+                *formatted = Some(Arc::new((self.formatter)(record)));
+            }
+        }
+        let formatted = self.formatted.read().unwrap();
+        let formatted = formatted.as_ref().unwrap();
+        formatted.clone()
+    }
+
+    pub fn ts_utc(&self, record: &Record) -> Arc<DateTime<UTC>> {
+        {
+            let mut ts_utc = self.ts_utc.write().unwrap();
+            if ts_utc.is_none() {
+                let naive = chrono::NaiveDateTime::from_timestamp(record.ts.sec, record.ts.nsec as u32);
+                *ts_utc = Some(Arc::new(chrono::DateTime::from_utc(naive, chrono::UTC)));
+            }
+        }
+        let ts_utc = self.ts_utc.read().unwrap();
+        let ts_utc = ts_utc.as_ref().unwrap();
+        ts_utc.clone()
+    }
+}
+
 #[derive(Clone)]
 pub struct Record<'a> {
     pub level: LogLevel,
     pub module: &'static str,
     pub file: &'static str,
     pub line: u32,
-    pub ts: DateTime<UTC>,
-    pub args: Arc<fmt::Arguments<'a>>,
+    pub ts: time::Timespec,
+    pub args: fmt::Arguments<'a>,
 
-    msg: Arc<RwLock<Option<Arc<Box<String>>>>>,
-    formatted: Arc<RwLock<Option<Arc<Box<String>>>>>,
-    formatter: &'a Formatter<'a>,
+    precord: Arc<PRecord<'a>>,
 }
 
 impl<'a> Record<'a> {
     #[inline(always)]
     fn new(level: LogLevel, module: &'static str, file: &'static str, line: u32,
-           ts: DateTime<UTC>, args: fmt::Arguments<'a>,
+           ts: time::Timespec, args: fmt::Arguments<'a>,
            formatter: &'a Formatter<'a>) -> Self {
         Record {
             level: level,
@@ -113,40 +172,22 @@ impl<'a> Record<'a> {
             file: file,
             line: line,
             ts: ts,
-            args: Arc::new(args),
-            msg: Arc::new(RwLock::new(None)),
-            formatted: Arc::new(RwLock::new(None)),
-            formatter: formatter,
+            args: args,
+
+            precord: Arc::new(PRecord::new(formatter)),
         }
     }
 
     pub fn msg(&self) -> Arc<Box<String>> {
-        let msg = self.msg.clone();
-        {
-            let mut msg = msg.write().unwrap();
-            if msg.is_none() {
-                let mut mstr = String::new();
-                mstr.write_fmt(*self.args).unwrap();
-
-                *msg = Some(Arc::new(Box::new(mstr)));
-            }
-        }
-        let msg = msg.read().unwrap();
-        let msg = msg.as_ref().unwrap();
-        msg.clone()
+        self.precord.msg(self)
     }
 
     pub fn formatted(&self) -> Arc<Box<String>> {
-        let formatted = self.formatted.clone();
-        {
-            let mut formatted = formatted.write().unwrap();
-            if formatted.is_none() {
-                *formatted = Some(Arc::new((self.formatter)(self)));
-            }
-        }
-        let formatted = formatted.read().unwrap();
-        let formatted = formatted.as_ref().unwrap();
-        formatted.clone()
+        self.precord.formatted(self)
+    }
+
+    pub fn ts_utc(&self) -> Arc<DateTime<UTC>> {
+        self.precord.ts_utc(self)
     }
 }
 
@@ -317,13 +358,12 @@ impl<'a> RootLogger<'a> {
     }
 
     pub fn log(&self, level: LogLevel, module: &'static str, file: &'static str, line: u32, args: fmt::Arguments) {
-        let record = Record::new(level, module, file, line, UTC::now(), args, &self.formatter);
-
+        let record = Record::new(level, module, file, line, time::get_time(), args, &self.formatter);
         if self.handlers.is_empty() {
             ::handlers::stdout::emit(&record.formatted());
         } else {
-            for h in self.handlers.iter() {
-                (*h)(&record);
+            for h in &self.handlers {
+                h(&record);
             }
         }
     }
