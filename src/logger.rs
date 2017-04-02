@@ -45,6 +45,7 @@ impl From<LogLevel> for isize {
 }
 
 impl From<isize> for LogLevel {
+    #[inline(always)]
     fn from(orig: isize) -> LogLevel {
         match orig {
             -20 => LogLevel::DEBUG,
@@ -249,33 +250,6 @@ impl<'a> RootLogger<'a> {
         self.formatter =  Box::new(::formatters::default::formatter);
         self.handlers = LinkedList::new();
     }
-
-    fn logger_slow<'b>(&self, module: &'static str, file: &'static str)
-                           -> Arc<Logger> {
-        let mut logger = self.root.clone();
-
-        for path in module.split("::") {
-            logger = {
-                let sub = &logger.sub;
-                match sub.get(path) {
-                    Some(logger) => logger.clone(),
-                    None => { return logger.clone(); },
-                }
-            }
-        }
-
-        for path in file.split(path::MAIN_SEPARATOR) {
-            logger = {
-                let sub = &logger.sub;
-                match sub.get(path) {
-                    Some(logger) => logger.clone(),
-                    None => { return logger.clone(); },
-                }
-            }
-        }
-
-        logger
-    }
 }
 
 impl<'a> RootLogger<'a> {
@@ -323,15 +297,30 @@ impl<'a> RootLogger<'a> {
         logger
     }
 
-    #[inline(always)]
-    pub fn logger<'b>(&self, module: &'static str, file: &'static str)
-                      -> Arc<Logger> {
-        let logger = self.root.clone();
-        if logger.sub.is_empty() {
-            logger
-        } else {
-            self.logger_slow(module, file)
+    pub fn logger(&self, module: &'static str, file: &'static str) -> Arc<Logger> {
+        let mut logger = self.root.clone();
+
+        for path in module.split("::") {
+            logger = {
+                let sub = &logger.sub;
+                match sub.get(path) {
+                    Some(logger) => logger.clone(),
+                    None => { return logger.clone(); },
+                }
+            }
         }
+
+        for path in file.split(path::MAIN_SEPARATOR) {
+            logger = {
+                let sub = &logger.sub;
+                match sub.get(path) {
+                    Some(logger) => logger.clone(),
+                    None => { return logger.clone(); },
+                }
+            }
+        }
+
+        panic!("Should not happen");
     }
 
     pub fn log(&self, level: LogLevel, module: &'static str, file: &'static str, line: u32, args: fmt::Arguments) {
@@ -472,9 +461,23 @@ macro_rules! debug {
 }
 
 #[macro_export]
+macro_rules! verbose {
+    ($($arg:tt)*) => {
+        log!($crate::LogLevel::VERBOSE, $($arg)*);
+    };
+}
+
+#[macro_export]
 macro_rules! info {
     ($($arg:tt)*) => {
         log!($crate::LogLevel::INFO, $($arg)*);
+    };
+}
+
+#[macro_export]
+macro_rules! notice {
+    ($($arg:tt)*) => {
+        log!($crate::LogLevel::NOTICE, $($arg)*);
     };
 }
 

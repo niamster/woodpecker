@@ -6,6 +6,7 @@
 
 pub mod logger;
 pub use logger::LogLevel;
+pub use logger::Record;
 
 pub mod handlers;
 pub mod formatters;
