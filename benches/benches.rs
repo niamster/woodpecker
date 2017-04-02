@@ -3,6 +3,7 @@ extern crate bencher;
 
 #[macro_use]
 extern crate woodpecker;
+use woodpecker as wp;
 
 use bencher::Bencher;
 
@@ -13,6 +14,7 @@ fn bench_no_output_single_thread(b: &mut Bencher) {
 }
 
 fn bench_output_drop_single_thread(b: &mut Bencher) {
+    wp::logger::reset();
     handler!(Box::new(|_| {}));
     b.iter(|| {
         critical!("{}", "test");

@@ -242,23 +242,16 @@ pub struct RootLogger<'a> {
 }
 
 impl<'a> RootLogger<'a> {
-    #[allow(dead_code)]
-    fn reset(&mut self) {
-        LOG_LEVEL.store(isize::from(LogLevel::WARN), Ordering::Relaxed);
-        HAS_SUBLOGGERS.store(false, Ordering::Relaxed);
-        self.root = Arc::new(Logger::new());
-        self.formatter =  Box::new(::formatters::default::formatter);
-        self.handlers = LinkedList::new();
-    }
-}
-
-impl<'a> RootLogger<'a> {
     pub fn new() -> Self {
         RootLogger {
             root: Arc::new(Logger::new()),
             formatter: Box::new(::formatters::default::formatter),
             handlers: LinkedList::new(),
         }
+    }
+
+    pub fn reset(&mut self) {
+        *self = Self::new();
     }
 
     #[inline]
@@ -349,6 +342,14 @@ pub fn root() -> Arc<RwLock<RootLogger<'static>>> {
 
         (*LOGGERS).clone()
     }
+}
+
+pub fn reset() {
+    let root = root();
+    let mut root = root.write().unwrap();
+    LOG_LEVEL.store(isize::from(LogLevel::WARN), Ordering::Relaxed);
+    HAS_SUBLOGGERS.store(false, Ordering::Relaxed);
+    root.reset();
 }
 
 pub fn is_string<T: ?Sized + Any>(_: &T) -> bool {
@@ -534,12 +535,7 @@ mod tests {
         let lock = context.lock.lock().unwrap();
 
         let result = panic::catch_unwind(|| {
-            {
-                let root = root();
-                let mut root = root.write().unwrap();
-                root.reset();
-            }
-
+            reset();
             let out = Arc::new(Mutex::new(String::new()));
             {
                 let out = out.clone();
