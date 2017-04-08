@@ -13,3 +13,4 @@ chrono = "0.3"
 
 [dev-dependencies]
 bencher = "0.1"
+tempdir = "0.3.5"

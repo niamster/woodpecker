@@ -7,7 +7,7 @@ use logger::Handler;
 
 struct Context {
     path: PathBuf,
-    range: Vec<PathBuf>,
+    logs: Vec<PathBuf>,
     size: u64,
     current: u64,
     file: File,
@@ -18,13 +18,21 @@ impl Context {
         OpenOptions::new().append(true).create(true).open(path).unwrap()
     }
 
+    fn logs(path: &Path, count: usize) -> Vec<PathBuf> {
+        (0..count-1).rev().map(|r| PathBuf::from(format!("{}.{}", path.display(), r))).collect()
+    }
+
     fn new(path: &Path, count: usize, size: u64) -> Self {
+        match path.parent() {
+            Some(dir) => create_dir_all(dir).unwrap(),
+            None => {},
+        };
         let file = Self::open(path);
         assert!(size > 0);
         assert!(count > 0);
         Context {
             path: path.into(),
-            range: (0..count-1).rev().map(|r| PathBuf::from(format!("{}.{}", path.display(), r))).collect(),
+            logs: Self::logs(path, count),
             size: size,
             current: file.metadata().unwrap().len(),
             file: file,
@@ -32,18 +40,18 @@ impl Context {
     }
 
     fn emit(&mut self, msg: &[u8]) {
-        self.file.write(msg).unwrap();
+        let _ = self.file.write(msg);
         self.current += msg.len() as u64;
         if self.current >= self.size {
-            drop(&self.file);
-            let rlen = self.range.len();
+            let rlen = self.logs.len();
             for i in 1..rlen {
-                let old = &self.range[i];
+                let old = &self.logs[i];
                 if old.exists() {
-                    let _ = rename(old, &self.range[i-1]);
+                    let _ = rename(old, &self.logs[i-1]);
                 }
             }
-            let _ = rename(&self.path, &self.range[rlen-1]);
+            let _ = self.file.flush();
+            let _ = rename(&self.path, &self.logs[rlen-1]);
             self.file = Self::open(&self.path);
             self.current = 0;
         }
@@ -51,13 +59,64 @@ impl Context {
 }
 
 pub fn handler(path: &Path, count: usize, size: u64) -> Handler<'static> {
-    match path.parent() {
-        Some(dir) => create_dir_all(dir).unwrap(),
-        None => {},
-    };
     let ctx = Mutex::new(Context::new(path, count, size));
     Box::new(move |record| {
         let mut ctx = ctx.lock().unwrap();
         ctx.emit(record.formatted().as_bytes());
     })
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate tempdir;
+    use self::tempdir::TempDir;
+
+    use super::*;
+
+    fn push(ctx: &mut super::Context, size: u64) {
+        ctx.emit("x".repeat(size as usize).as_bytes());
+    }
+
+    fn tlogs(logs: &[PathBuf], size: u64, filled: usize) {
+        for i in 0..filled {
+            let log = &logs[i];
+            assert!(log.exists());
+            assert_eq!(log.metadata().unwrap().len(), size);
+        }
+        for i in filled..logs.len() {
+            assert!(!logs[i].exists());
+        }
+    }
+
+    #[test]
+    fn test_rotating_file() {
+        let dir = TempDir::new("wp-rf").unwrap();
+        let path = dir.path().join("logs").join("test.log");
+        let count = 5;
+        let size = 20;
+        let mut ctx = super::Context::new(&path, count, size);
+        let mut logs = super::Context::logs(&path, count+1);
+        logs.reverse();
+        let elogs = &logs[..logs.len()-1];
+        let flog = &logs[logs.len()-1];
+
+        assert!(path.exists());
+        assert_eq!(path.metadata().unwrap().len(), 0);
+
+        push(&mut ctx, size/2);
+        assert_eq!(path.metadata().unwrap().len(), size/2);
+        tlogs(elogs, size, 0);
+
+        push(&mut ctx, size/2);
+        assert_eq!(path.metadata().unwrap().len(), 0);
+        tlogs(elogs, size, 1);
+
+        for i in 2..count {
+            push(&mut ctx, size);
+            assert_eq!(path.metadata().unwrap().len(), 0);
+            tlogs(elogs, size, i);
+        }
+
+        assert!(!flog.exists());
+    }
 }
