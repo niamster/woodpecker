@@ -13,7 +13,7 @@ use std::mem;
 use std::path;
 use std::sync::{Arc, RwLock, Once, ONCE_INIT};
 use std::sync::atomic::{AtomicIsize, AtomicBool, Ordering, ATOMIC_ISIZE_INIT, ATOMIC_BOOL_INIT};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::collections::LinkedList;
 use std::fmt;
 use std::fmt::Write;
@@ -247,14 +247,14 @@ impl<'a> Iterator for LPathIter<'a> {
 #[derive(Debug, Clone)]
 pub struct Logger {
     pub level: LogLevel,
-    sub: HashMap<String, Arc<Logger>>,
+    sub: BTreeMap<String, Arc<Logger>>,
 }
 
 impl Logger {
     pub fn new() -> Self {
         Logger {
             level: LogLevel::from(LOG_LEVEL.load(Ordering::Relaxed)),
-            sub: HashMap::new(),
+            sub: BTreeMap::new(),
         }
     }
 
