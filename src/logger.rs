@@ -354,7 +354,7 @@ impl<'a> RootLogger<'a> {
             }
         }
 
-        panic!("Should not happen");
+        logger
     }
 
     pub fn log(&self, level: LogLevel, module: &'static str, file: &'static str, line: u32, args: fmt::Arguments) {
@@ -549,6 +549,7 @@ mod tests {
 
     use std::mem;
     use std::sync::{Arc, RwLock, Mutex, Once, ONCE_INIT};
+    use std::path::PathBuf;
     use std::ops::Deref;
     use std::thread;
     use std::panic;
@@ -626,17 +627,66 @@ mod tests {
                 }
             }
 
+            formatter!(Box::new(|record| {
+                Box::new(format!(
+                    "{}:{}",
+                    record.level,
+                    record.msg(),
+                ))
+            }));
+
             let logger = "woodpecker";
             level!([LogLevel::WARN]);
-            level!(logger, [LogLevel::DEBUG]);
+            level!(logger, [LogLevel::VERBOSE]);
             assert_eq!(level!(), LogLevel::WARN);
             assert_eq!(level!("foo"), LogLevel::WARN);
-            assert_eq!(level!(logger), LogLevel::DEBUG);
+            assert_eq!(level!(logger), LogLevel::VERBOSE);
+
             {
+                let mut output = buf.lock().unwrap();
+                output.clear();
+                drop(output);
+                verbose!("msg");
                 debug!("msg");
                 let output = buf.lock().unwrap();
-                assert!(output.as_str().contains("msg"));
-                assert!(output.as_str().contains("DEBUG"));
+                assert_eq!(output.as_str(), "VERBOSE:msg");
+            }
+
+            level!([LogLevel::CRITICAL]);
+
+            let logger = module_path!();
+            level!(logger, [LogLevel::ERROR]);
+            assert_eq!(level!(), LogLevel::CRITICAL);
+            assert_eq!(level!(logger), LogLevel::ERROR);
+
+            let logger = format!("{}::{}", module_path!(), file!());
+            level!(logger, [LogLevel::NOTICE]);
+            assert_eq!(level!(), LogLevel::CRITICAL);
+            assert_eq!(level!(logger), LogLevel::NOTICE);
+
+            {
+                let mut output = buf.lock().unwrap();
+                output.clear();
+                drop(output);
+                notice!("msg");
+                verbose!("msg");
+                let output = buf.lock().unwrap();
+                assert_eq!(output.as_str(), "NOTICE:msg");
+            }
+
+            let logger = format!("{}/{}", module_path!(), PathBuf::from(file!()).parent().unwrap().display());
+            level!(logger, [LogLevel::INFO]);
+            assert_eq!(level!(), LogLevel::CRITICAL);
+            assert_eq!(level!(logger), LogLevel::INFO);
+
+            {
+                let mut output = buf.lock().unwrap();
+                output.clear();
+                drop(output);
+                info!("msg");
+                verbose!("msg");
+                let output = buf.lock().unwrap();
+                assert_eq!(output.as_str(), "INFO:msg");
             }
         });
     }
