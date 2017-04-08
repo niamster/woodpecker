@@ -608,6 +608,30 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "Unsupported log level -1000")]
+    fn test_logger_level() {
+        LogLevel::from(-1000);
+    }
+
+    #[test]
+    #[should_panic(expected = "Logger name must be a string")]
+    fn test_logger_type_string_0() {
+        level!(42);
+    }
+
+    #[test]
+    #[should_panic(expected = "Logger name must be a string")]
+    fn test_logger_type_string_1() {
+        level!(42, [LogLevel::INFO]);
+    }
+
+    #[test]
+    #[should_panic(expected = "You might have meant [LogLevel::INFO]")]
+    fn test_logger_level_type() {
+        level!(LogLevel::INFO);
+    }
+
+    #[test]
     fn test_logger_basic() {
         run_test(|buf| {
             for l in LEVELS.iter() {
