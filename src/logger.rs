@@ -10,10 +10,8 @@ use self::chrono::prelude::*;
 extern crate time;
 
 use std::mem;
-use std::path;
 use std::sync::{Arc, RwLock, Once, ONCE_INIT};
 use std::sync::atomic::{AtomicIsize, AtomicBool, Ordering, ATOMIC_ISIZE_INIT, ATOMIC_BOOL_INIT};
-use std::collections::BTreeMap;
 use std::collections::LinkedList;
 use std::fmt;
 use std::fmt::Write;
@@ -194,90 +192,8 @@ impl<'a> Record<'a> {
 pub type Formatter<'a> = Box<Fn(&Record) -> Box<String> + 'a>;
 pub type Handler<'a> = Box<Fn(&Record) + 'a>;
 
-#[derive(Debug)]
-struct LPath<'a> {
-    path: Vec<&'a str>,
-}
-
-#[derive(Debug)]
-struct LPathIter<'a> {
-    path: &'a LPath<'a>,
-    index: usize,
-}
-
-impl<'a> LPath<'a> {
-    fn new(path: &'a String) -> Self {
-        let mut lpath = Vec::new();
-
-        for path in path.split("::") {
-            for path in path.split(path::MAIN_SEPARATOR) {
-                if !path.is_empty() {
-                    lpath.push(path);
-                }
-            }
-        }
-
-        LPath {
-            path: lpath,
-        }
-    }
-
-    fn iter(&self) -> LPathIter {
-        LPathIter {
-            path: self,
-            index: 0,
-        }
-    }
-}
-
-impl<'a> Iterator for LPathIter<'a> {
-    type Item = &'a str;
-
-    fn next(&mut self) -> Option<&'a str> {
-        if self.index >= self.path.path.len() {
-            None
-        } else {
-            let index = self.index;
-            self.index += 1;
-            Some(self.path.path[index])
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Logger {
-    pub level: LogLevel,
-    sub: BTreeMap<String, Arc<Logger>>,
-}
-
-impl Logger {
-    pub fn new() -> Self {
-        Logger {
-            level: LogLevel::from(LOG_LEVEL.load(Ordering::Relaxed)),
-            sub: BTreeMap::new(),
-        }
-    }
-
-    pub fn level(&mut self, level: LogLevel) {
-        self.level = level;
-        // XXX: or propagate the the level?
-        self.sub.clear();
-    }
-
-    pub fn sublevel<'a, T>(&mut self, mut path: T, level: LogLevel) where T: Iterator<Item = &'a str> {
-        match path.next() {
-            None => self.level(level),
-            Some(ref piece) => {
-                let mut logger = self.sub.entry(piece.to_string()).or_insert(Arc::new(Logger::new()));
-                let mut logger = Arc::get_mut(&mut logger).unwrap();
-                logger.sublevel(path, level);
-            },
-        }
-    }
-}
-
 pub struct RootLogger<'a> {
-    root: Arc<Logger>,
+    loggers: Vec<(String, LogLevel)>,
     formatter: Formatter<'a>,
     handlers: LinkedList<Handler<'a>>,
 }
@@ -285,7 +201,7 @@ pub struct RootLogger<'a> {
 impl<'a> RootLogger<'a> {
     pub fn new() -> Self {
         RootLogger {
-            root: Arc::new(Logger::new()),
+            loggers: Vec::new(),
             formatter: Box::new(::formatters::default::formatter),
             handlers: LinkedList::new(),
         }
@@ -293,11 +209,6 @@ impl<'a> RootLogger<'a> {
 
     pub fn reset(&mut self) {
         *self = Self::new();
-    }
-
-    #[inline]
-    pub fn root(&self) -> Arc<Logger> {
-        self.root.clone()
     }
 
     pub fn handler(&mut self, handler: Handler<'a>) {
@@ -308,53 +219,39 @@ impl<'a> RootLogger<'a> {
         self.formatter = formatter;
     }
 
-    pub fn level(&mut self, path: &String, level: LogLevel) {
-        let mut logger = Arc::make_mut(&mut self.root);
-        logger.sublevel(LPath::new(path).iter(), level);
+    pub fn set_level(&mut self, path: &str, level: LogLevel) {
+        self.loggers.retain(|&(ref name, _)| !(name.len() > path.len() && name.starts_with(path)));
+        match self.loggers.binary_search_by(|&(ref k, _)| path.cmp(&k)) {
+            Ok(pos) => {
+                let (_, ref mut olevel) = self.loggers[pos];
+                *olevel = level;
+            },
+            Err(pos) => {
+                self.loggers.insert(pos, (path.to_string(), level));
+            },
+        };
     }
 
-    pub fn logger_by_path(&self, path: &String) -> Arc<Logger> {
-        let mut logger = self.root.clone();
-
-        for path in path.split("::") {
-            for path in path.split(path::MAIN_SEPARATOR) {
-                logger = {
-                    let sub = &logger.sub;
-                    match sub.get(path) {
-                        Some(logger) => logger.clone(),
-                        None => { return logger.clone(); },
+    #[inline(always)]
+    pub fn get_level(&self, path: &str) -> LogLevel {
+        if self.loggers.len() == 0 {
+            global_get_level()
+        } else {
+            match self.loggers.binary_search_by(|&(ref k, _)| path.cmp(&k)) {
+                Ok(pos) => {
+                    let (_, level) = self.loggers[pos];
+                    level
+                },
+                Err(pos) => {
+                    let (ref name, level) = self.loggers[if pos > 0 { pos - 1} else { pos }];
+                    if path.starts_with(name) {
+                        level
+                    } else {
+                        global_get_level()
                     }
-                };
+                },
             }
         }
-
-        logger
-    }
-
-    pub fn logger(&self, module: &'static str, file: &'static str) -> Arc<Logger> {
-        let mut logger = self.root.clone();
-
-        for path in module.split("::") {
-            logger = {
-                let sub = &logger.sub;
-                match sub.get(path) {
-                    Some(logger) => logger.clone(),
-                    None => { return logger.clone(); },
-                }
-            }
-        }
-
-        for path in file.split(path::MAIN_SEPARATOR) {
-            logger = {
-                let sub = &logger.sub;
-                match sub.get(path) {
-                    Some(logger) => logger.clone(),
-                    None => { return logger.clone(); },
-                }
-            }
-        }
-
-        logger
     }
 
     pub fn log(&self, level: LogLevel, module: &'static str, file: &'static str, line: u32, args: fmt::Arguments) {
@@ -400,18 +297,13 @@ pub fn is_logger_level<T: ?Sized + Any>(_: &T) -> bool {
     TypeId::of::<LogLevel>() == TypeId::of::<T>()
 }
 
-#[macro_export]
-macro_rules! __action {
-    ($logger:expr, $func:ident($arg:expr)) => {{
-        let root = $crate::logger::root();
-        let mut root = root.write().unwrap();
-        root.$func(&$logger.to_string(), $arg);
-    }};
-    ($func:ident($arg:expr)) => {{
-        let root = $crate::logger::root();
-        let mut root = root.write().unwrap();
-        root.$func(&"".to_string(), $arg);
-    }};
+#[inline(always)]
+pub fn global_get_level() -> LogLevel {
+    LogLevel::from(LOG_LEVEL.load(Ordering::Relaxed))
+}
+
+pub fn global_set_level(level: LogLevel) {
+    LOG_LEVEL.store(level.into(), Ordering::Relaxed);
 }
 
 #[macro_export]
@@ -421,21 +313,19 @@ macro_rules! level {
         if !$crate::logger::is_string(&$logger) {
             panic!("Logger name must be a string");
         }
-        __action!(&$logger.to_string(), level($level));
+        let root = $crate::logger::root();
+        let mut root = root.write().unwrap();
+        root.set_level(&$logger.to_string(), $level);
         use std::sync::atomic::Ordering;
         $crate::logger::HAS_SUBLOGGERS.store(true, Ordering::Relaxed);
     }};
     ([ $level:expr ]) => {{
-        __action!(level($level));
-        use std::sync::atomic::Ordering;
-        $crate::logger::LOG_LEVEL.store(isize::from($level), Ordering::Relaxed);
+        $crate::logger::global_set_level($level);
     }};
 
     // getters
     () => {{
-        let root = $crate::logger::root();
-        let root = root.read().unwrap().root();
-        root.level
+        $crate::logger::global_get_level()
     }};
     ($logger:expr) => {{
         let root = $crate::logger::root();
@@ -445,8 +335,8 @@ macro_rules! level {
             }
             panic!("Logger name must be a string");
         }
-        let logger = root.read().unwrap().logger_by_path(&$logger.to_string());
-        logger.level
+        let level = root.read().unwrap().get_level(&$logger.to_string());
+        level
     }};
 }
 
@@ -477,15 +367,14 @@ macro_rules! log {
     ($level:expr, $($arg:tt)*) => {{
         use std::sync::atomic::Ordering;
         if $crate::logger::HAS_SUBLOGGERS.load(Ordering::Relaxed) {
+            let path = concat!(module_path!(), "::", file!());
             let root = $crate::logger::root();
             let root = root.read().unwrap();
-            let logger = root.logger(module_path!(), file!());
-            if logger.level <= $level {
+            if root.get_level(path) <= $level {
                 root.log($level, module_path!(), file!(), line!(), format_args!($($arg)*));
             }
         } else {
-            let level = $crate::logger::LogLevel::from($crate::logger::LOG_LEVEL.load(Ordering::Relaxed));
-            if level <= $level {
+            if $crate::logger::global_get_level() <= $level {
                 let root = $crate::logger::root();
                 let root = root.read().unwrap();
                 root.log($level, module_path!(), file!(), line!(), format_args!($($arg)*));
@@ -698,7 +587,9 @@ mod tests {
                 assert_eq!(output.as_str(), "NOTICE:msg");
             }
 
-            let logger = format!("{}/{}", module_path!(), PathBuf::from(file!()).parent().unwrap().display());
+            level!("woodpecker", [LogLevel::CRITICAL]);
+
+            let logger = format!("{}::{}", module_path!(), PathBuf::from(file!()).parent().unwrap().display());
             level!(logger, [LogLevel::INFO]);
             assert_eq!(level!(), LogLevel::CRITICAL);
             assert_eq!(level!(logger), LogLevel::INFO);
