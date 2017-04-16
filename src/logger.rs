@@ -234,23 +234,19 @@ impl<'a> RootLogger<'a> {
 
     #[inline(always)]
     pub fn get_level(&self, path: &str) -> LogLevel {
-        if self.loggers.len() == 0 {
-            global_get_level()
-        } else {
-            match self.loggers.binary_search_by(|&(ref k, _)| path.cmp(&k)) {
-                Ok(pos) => {
-                    let (_, level) = self.loggers[pos];
+        match self.loggers.binary_search_by(|&(ref k, _)| path.cmp(&k)) {
+            Ok(pos) => {
+                let &(_, level) = &self.loggers[pos];
+                level
+            },
+            Err(pos) => {
+                let &(ref name, level) = &self.loggers[if pos > 0 { pos - 1} else { pos }];
+                if path.starts_with(name) {
                     level
-                },
-                Err(pos) => {
-                    let (ref name, level) = self.loggers[if pos > 0 { pos - 1} else { pos }];
-                    if path.starts_with(name) {
-                        level
-                    } else {
-                        global_get_level()
-                    }
-                },
-            }
+                } else {
+                    global_get_level()
+                }
+            },
         }
     }
 
@@ -284,8 +280,8 @@ pub fn root() -> Arc<RwLock<RootLogger<'static>>> {
 pub fn reset() {
     let root = root();
     let mut root = root.write().unwrap();
-    LOG_LEVEL.store(isize::from(LogLevel::WARN), Ordering::Relaxed);
-    HAS_SUBLOGGERS.store(false, Ordering::Relaxed);
+    global_set_level(LogLevel::WARN);
+    global_set_loggers(false);
     root.reset();
 }
 
@@ -306,6 +302,15 @@ pub fn global_set_level(level: LogLevel) {
     LOG_LEVEL.store(level.into(), Ordering::Relaxed);
 }
 
+#[inline(always)]
+pub fn global_has_loggers() -> bool {
+    HAS_SUBLOGGERS.load(Ordering::Relaxed)
+}
+
+pub fn global_set_loggers(value: bool) {
+    HAS_SUBLOGGERS.store(value, Ordering::Relaxed);
+}
+
 #[macro_export]
 macro_rules! level {
     // setters
@@ -316,8 +321,7 @@ macro_rules! level {
         let root = $crate::logger::root();
         let mut root = root.write().unwrap();
         root.set_level(&$logger.to_string(), $level);
-        use std::sync::atomic::Ordering;
-        $crate::logger::HAS_SUBLOGGERS.store(true, Ordering::Relaxed);
+        $crate::logger::global_set_loggers(true);
     }};
     ([ $level:expr ]) => {{
         $crate::logger::global_set_level($level);
@@ -328,15 +332,19 @@ macro_rules! level {
         $crate::logger::global_get_level()
     }};
     ($logger:expr) => {{
-        let root = $crate::logger::root();
         if !$crate::logger::is_string(&$logger) {
             if $crate::logger::is_logger_level(&$logger) {
                 panic!(format!("You might have meant [LogLevel::{:?}]", $logger));
             }
             panic!("Logger name must be a string");
         }
-        let level = root.read().unwrap().get_level(&$logger.to_string());
-        level
+        if $crate::logger::global_has_loggers() {
+            let root = $crate::logger::root();
+            let level = root.read().unwrap().get_level(&$logger.to_string());
+            level
+        } else {
+            $crate::logger::global_get_level()
+        }
     }};
 }
 
@@ -365,8 +373,7 @@ macro_rules! formatter {
 #[macro_export]
 macro_rules! log {
     ($level:expr, $($arg:tt)*) => {{
-        use std::sync::atomic::Ordering;
-        if $crate::logger::HAS_SUBLOGGERS.load(Ordering::Relaxed) {
+        if $crate::logger::global_has_loggers() {
             let path = concat!(module_path!(), "::", file!());
             let root = $crate::logger::root();
             let root = root.read().unwrap();

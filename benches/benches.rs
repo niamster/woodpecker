@@ -37,7 +37,9 @@ mod wpb {
     fn bench_no_output_sub_other_single_thread(b: &mut Bencher) {
         wp::logger::reset();
         level!([wp::LogLevel::ERROR]);
-        level!("foo", [wp::LogLevel::INFO]);
+        for idx in 0..100 {
+            level!(idx.to_string(), [wp::LogLevel::DEBUG]);
+        }
         b.iter(|| {
             debug!("{}", "test");
         });
@@ -76,7 +78,9 @@ mod wpb {
         wp::logger::reset();
         level!([wp::LogLevel::ERROR]);
         handler!(Box::new(|_| {}));
-        level!("foo", [wp::LogLevel::INFO]);
+        for idx in 0..100 {
+            level!(idx.to_string(), [wp::LogLevel::DEBUG]);
+        }
         b.iter(|| {
             critical!("{}", "test");
         });
