@@ -7,10 +7,13 @@
 extern crate chrono;
 use self::chrono::prelude::*;
 
+extern crate parking_lot;
+use self::parking_lot::RwLock;
+
 extern crate time;
 
 use std::mem;
-use std::sync::{Arc, RwLock, Once, ONCE_INIT};
+use std::sync::{Arc, Once, ONCE_INIT};
 use std::sync::atomic::{AtomicIsize, AtomicBool, Ordering, ATOMIC_ISIZE_INIT, ATOMIC_BOOL_INIT};
 use std::collections::LinkedList;
 use std::fmt;
@@ -108,7 +111,7 @@ impl<'a> PRecord<'a> {
 
     pub fn msg(&self, record: &Record) -> Arc<Box<String>> {
         {
-            let mut msg = self.msg.write().unwrap();
+            let mut msg = self.msg.write();
             if msg.is_none() {
                 let mut mstr = String::new();
                 mstr.write_fmt(record.args).unwrap();
@@ -116,32 +119,32 @@ impl<'a> PRecord<'a> {
                 *msg = Some(Arc::new(Box::new(mstr)));
             }
         }
-        let msg = self.msg.read().unwrap();
+        let msg = self.msg.read();
         let msg = msg.as_ref().unwrap();
         msg.clone()
     }
 
     pub fn formatted(&self, record: &Record) -> Arc<Box<String>> {
         {
-            let mut formatted = self.formatted.write().unwrap();
+            let mut formatted = self.formatted.write();
             if formatted.is_none() {
                 *formatted = Some(Arc::new((self.formatter)(record)));
             }
         }
-        let formatted = self.formatted.read().unwrap();
+        let formatted = self.formatted.read();
         let formatted = formatted.as_ref().unwrap();
         formatted.clone()
     }
 
     pub fn ts_utc(&self, record: &Record) -> Arc<DateTime<UTC>> {
         {
-            let mut ts_utc = self.ts_utc.write().unwrap();
+            let mut ts_utc = self.ts_utc.write();
             if ts_utc.is_none() {
                 let naive = chrono::NaiveDateTime::from_timestamp(record.ts.sec, record.ts.nsec as u32);
                 *ts_utc = Some(Arc::new(chrono::DateTime::from_utc(naive, chrono::UTC)));
             }
         }
-        let ts_utc = self.ts_utc.read().unwrap();
+        let ts_utc = self.ts_utc.read();
         let ts_utc = ts_utc.as_ref().unwrap();
         ts_utc.clone()
     }
@@ -279,7 +282,7 @@ pub fn root() -> Arc<RwLock<RootLogger<'static>>> {
 
 pub fn reset() {
     let root = root();
-    let mut root = root.write().unwrap();
+    let mut root = root.write();
     global_set_level(LogLevel::WARN);
     global_set_loggers(false);
     root.reset();
@@ -319,7 +322,7 @@ macro_rules! level {
             panic!("Logger name must be a string");
         }
         let root = $crate::logger::root();
-        let mut root = root.write().unwrap();
+        let mut root = root.write();
         root.set_level(&$logger.to_string(), $level);
         $crate::logger::global_set_loggers(true);
     }};
@@ -340,7 +343,7 @@ macro_rules! level {
         }
         if $crate::logger::global_has_loggers() {
             let root = $crate::logger::root();
-            let level = root.read().unwrap().get_level(&$logger.to_string());
+            let level = root.read().get_level(&$logger.to_string());
             level
         } else {
             $crate::logger::global_get_level()
@@ -352,7 +355,7 @@ macro_rules! level {
 macro_rules! __waction {
     ($func:ident($arg:expr)) => {{
         let root = $crate::logger::root();
-        root.write().unwrap().$func($arg);
+        root.write().$func($arg);
     }};
 }
 
@@ -376,14 +379,14 @@ macro_rules! log {
         if $crate::logger::global_has_loggers() {
             let path = concat!(module_path!(), "::", file!());
             let root = $crate::logger::root();
-            let root = root.read().unwrap();
+            let root = root.read();
             if root.get_level(path) <= $level {
                 root.log($level, module_path!(), file!(), line!(), format_args!($($arg)*));
             }
         } else {
             if $crate::logger::global_get_level() <= $level {
                 let root = $crate::logger::root();
-                let root = root.read().unwrap();
+                let root = root.read();
                 root.log($level, module_path!(), file!(), line!(), format_args!($($arg)*));
             }
         }
@@ -619,8 +622,8 @@ mod tests {
             {
                 let out = out.clone();
                 handler!(Box::new(move |record| {
-                    out.write().unwrap().push_str(record.msg().deref());
-                    out.write().unwrap().push_str("|");
+                    out.write().push_str(record.msg().deref());
+                    out.write().push_str("|");
                 }));
 
                 level!([LogLevel::INFO]);
@@ -628,7 +631,7 @@ mod tests {
                 debug!("foo");
             }
             assert_eq!(buf.lock().unwrap().split("msg").count(), 2);
-            assert_eq!(*out.read().unwrap(), "msg|".to_string());
+            assert_eq!(*out.read(), "msg|".to_string());
         });
     }
 
@@ -639,7 +642,7 @@ mod tests {
             {
                 let out = out.clone();
                 handler!(Box::new(move |record| {
-                    out.write().unwrap().push_str(record.formatted().deref());
+                    out.write().push_str(record.formatted().deref());
                 }));
                 formatter!(Box::new(|record| {
                     Box::new(format!(
@@ -653,7 +656,7 @@ mod tests {
                 info!("msg");
                 debug!("foo");
             }
-            assert_eq!(*out.read().unwrap(), "INFO:msg|".to_string());
+            assert_eq!(*out.read(), "INFO:msg|".to_string());
         });
     }
 
@@ -665,7 +668,7 @@ mod tests {
             {
                 let out = out.clone();
                 handler!(Box::new(move |record| {
-                    out.write().unwrap().push_str(record.formatted().deref());
+                    out.write().push_str(record.formatted().deref());
                 }));
                 formatter!(Box::new(move |record| {
                     Box::new(format!(
@@ -692,7 +695,7 @@ mod tests {
                     th.join().unwrap();
                 }
             }
-            let sum = out.read().unwrap().split("INFO:").
+            let sum = out.read().split("INFO:").
                 filter(|val| !val.is_empty()).
                 fold(0, |acc, ref val| {
                     acc + val.parse::<u32>().unwrap()
