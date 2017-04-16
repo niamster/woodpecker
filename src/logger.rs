@@ -443,8 +443,7 @@ macro_rules! critical {
 mod tests {
     use super::*;
 
-    use std::mem;
-    use std::sync::{Arc, RwLock, Mutex, Once, ONCE_INIT};
+    use std::sync::Mutex;
     use std::path::PathBuf;
     use std::ops::Deref;
     use std::thread;
