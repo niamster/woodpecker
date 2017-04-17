@@ -8,82 +8,259 @@ mod wpb {
     use bencher::Bencher;
     use woodpecker as wp;
 
-    fn bench_no_output_single_thread(b: &mut Bencher) {
-        wp::logger::reset();
-        level!([wp::LogLevel::ERROR]);
-        b.iter(|| {
-            debug!("{}", "test");
-        });
+    use std::thread;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    const THREADS_QTY: usize = 4;
+    const FOO_LOGGERS_QTY: usize = 10;
+
+    struct LThreads {
+        threads: Vec<thread::JoinHandle<()>>,
+        stop: Arc<AtomicBool>,
     }
 
-    fn bench_no_output_sub_this_module_single_thread(b: &mut Bencher) {
+    impl LThreads {
+        fn new(f: Arc<Fn() + Sync + Send>) -> Self {
+            let mut threads = Vec::new();
+            let stop = Arc::new(AtomicBool::new(false));
+            for _ in 0..THREADS_QTY {
+                let stop = stop.clone();
+                let f = f.clone();
+                threads.push(thread::spawn(move || {
+                    while !stop.load(Ordering::Acquire) {
+                        thread::yield_now();
+                        f();
+                    }
+                }));
+            }
+            LThreads {
+                threads: threads,
+                stop: stop,
+            }
+        }
+
+        fn join(&mut self) {
+            self.stop.store(true, Ordering::Release);
+            for t in self.threads.drain(..) {
+                t.join().unwrap();
+            }
+        }
+    }
+
+    impl Drop for LThreads {
+        fn drop(&mut self) {
+            self.join();
+        }
+    }
+
+    macro_rules! jail {
+        ($b:ident, $body:expr) => {
+            reset();
+            $b.iter(|| { $body; });
+        };
+        ($b:ident, $pre:expr, $body:expr) => {
+            reset();
+            $pre;
+            $b.iter(|| { $body; });
+        };
+    }
+
+    macro_rules! tjail {
+        ($b:ident, $body:expr) => {
+            reset();
+            let t = LThreads::new(Arc::new(|| { $body; }));
+            $b.iter(|| { $body; });
+            drop(t);
+        };
+        ($b:ident, $pre:expr, $body:expr) => {
+            reset();
+            $pre;
+            let t = LThreads::new(Arc::new(|| { $body; }));
+            $b.iter(|| { $body; });
+            drop(t);
+        };
+    }
+
+    macro_rules! doutput {
+        () => { debug!("{:?} -> {}", thread::current(), "test") }
+    }
+
+    macro_rules! coutput {
+        () => { critical!("{:?} -> {}", thread::current(), "test") }
+    }
+
+    fn reset() {
         wp::logger::reset();
         level!([wp::LogLevel::ERROR]);
+    }
+
+    fn drop_output() {
+        handler!(Box::new(|_| {}));
+    }
+
+    fn foo_loggers() {
+        for idx in 0..FOO_LOGGERS_QTY {
+            level!(format!("foo::bar::qux::{}", idx), [wp::LogLevel::DEBUG]);
+        }
+    }
+
+    fn foo_loggers_this_module() {
+        foo_loggers();
         level!(module_path!(), [wp::LogLevel::INFO]);
-        b.iter(|| {
-            debug!("{}", "test");
-        });
     }
 
-    fn bench_no_output_sub_this_file_single_thread(b: &mut Bencher) {
-        wp::logger::reset();
-        level!([wp::LogLevel::ERROR]);
+    fn foo_loggers_this_file() {
+        foo_loggers();
         level!(format!("{}::{}", module_path!(), file!()), [wp::LogLevel::INFO]);
-        b.iter(|| {
-            debug!("{}", "test");
-        });
+    }
+
+    // No output, single thread
+    fn bench_no_output_single_thread(b: &mut Bencher) {
+        jail!(
+            b,
+            doutput!()
+        );
     }
 
     fn bench_no_output_sub_other_single_thread(b: &mut Bencher) {
-        wp::logger::reset();
-        level!([wp::LogLevel::ERROR]);
-        for idx in 0..100 {
-            level!(idx.to_string(), [wp::LogLevel::DEBUG]);
-        }
-        b.iter(|| {
-            debug!("{}", "test");
-        });
+        jail!(
+            b,
+            foo_loggers(),
+            doutput!()
+        );
     }
 
+    fn bench_no_output_sub_this_module_single_thread(b: &mut Bencher) {
+        jail!(
+            b,
+            foo_loggers_this_module(),
+            doutput!()
+        );
+    }
+
+    fn bench_no_output_sub_this_file_single_thread(b: &mut Bencher) {
+        jail!(
+            b,
+            foo_loggers_this_file(),
+            doutput!()
+        );
+    }
+
+    // No output, multi thread
+    fn bench_no_output_multi_thread(b: &mut Bencher) {
+        tjail!(
+            b,
+            doutput!()
+        );
+    }
+
+    fn bench_no_output_sub_other_multi_thread(b: &mut Bencher) {
+        tjail!(
+            b,
+            foo_loggers(),
+            doutput!()
+        );
+    }
+
+    fn bench_no_output_sub_this_module_multi_thread(b: &mut Bencher) {
+        tjail!(
+            b,
+            foo_loggers_this_module(),
+            doutput!()
+        );
+    }
+
+    fn bench_no_output_sub_this_file_multi_thread(b: &mut Bencher) {
+        tjail!(
+            b,
+            foo_loggers_this_file(),
+            doutput!()
+        );
+    }
+
+    // Drop output, single thread
     fn bench_output_drop_single_thread(b: &mut Bencher) {
-        wp::logger::reset();
-        level!([wp::LogLevel::ERROR]);
-        handler!(Box::new(|_| {}));
-        b.iter(|| {
-            critical!("{}", "test");
-        });
-    }
-
-    fn bench_output_drop_sub_this_module_single_thread(b: &mut Bencher) {
-        wp::logger::reset();
-        level!([wp::LogLevel::ERROR]);
-        handler!(Box::new(|_| {}));
-        level!(module_path!(), [wp::LogLevel::INFO]);
-        b.iter(|| {
-            critical!("{}", "test");
-        });
-    }
-
-    fn bench_output_drop_sub_this_file_single_thread(b: &mut Bencher) {
-        wp::logger::reset();
-        level!([wp::LogLevel::ERROR]);
-        handler!(Box::new(|_| {}));
-        level!(format!("{}::{}", module_path!(), file!()), [wp::LogLevel::INFO]);
-        b.iter(|| {
-            critical!("{}", "test");
-        });
+        jail!(
+            b,
+            drop_output(),
+            coutput!()
+        );
     }
 
     fn bench_output_drop_sub_other_single_thread(b: &mut Bencher) {
-        wp::logger::reset();
-        level!([wp::LogLevel::ERROR]);
-        handler!(Box::new(|_| {}));
-        for idx in 0..100 {
-            level!(idx.to_string(), [wp::LogLevel::DEBUG]);
-        }
-        b.iter(|| {
-            critical!("{}", "test");
-        });
+        jail!(
+            b,
+            {
+                drop_output();
+                foo_loggers();
+            },
+            coutput!()
+        );
+    }
+
+    fn bench_output_drop_sub_this_module_single_thread(b: &mut Bencher) {
+        jail!(
+            b,
+            {
+                drop_output();
+                foo_loggers_this_module();
+            },
+            coutput!()
+        );
+    }
+
+    fn bench_output_drop_sub_this_file_single_thread(b: &mut Bencher) {
+        jail!(
+            b,
+            {
+                drop_output();
+                foo_loggers_this_file();
+            },
+            coutput!()
+        );
+    }
+
+    // Drop output, multi thread
+    fn bench_output_drop_multi_thread(b: &mut Bencher) {
+        tjail!(
+            b,
+            drop_output(),
+            coutput!()
+        );
+    }
+
+    fn bench_output_drop_sub_other_multi_thread(b: &mut Bencher) {
+        tjail!(
+            b,
+            {
+                drop_output();
+                foo_loggers();
+            },
+            coutput!()
+        );
+    }
+
+    fn bench_output_drop_sub_this_module_multi_thread(b: &mut Bencher) {
+        tjail!(
+            b,
+            {
+                drop_output();
+                foo_loggers_this_module();
+            },
+            coutput!()
+        );
+    }
+
+    fn bench_output_drop_sub_this_file_multi_thread(b: &mut Bencher) {
+        tjail!(
+            b,
+            {
+                drop_output();
+                foo_loggers_this_file();
+            },
+            coutput!()
+        );
     }
 
     fn bench_stub(_: &mut Bencher) {
@@ -101,6 +278,16 @@ mod wpb {
         bench_output_drop_sub_this_module_single_thread,
         bench_output_drop_sub_this_file_single_thread,
         bench_output_drop_sub_other_single_thread,
+
+        bench_no_output_multi_thread,
+        bench_no_output_sub_this_file_multi_thread,
+        bench_no_output_sub_this_module_multi_thread,
+        bench_no_output_sub_other_multi_thread,
+
+        bench_output_drop_multi_thread,
+        bench_output_drop_sub_this_module_multi_thread,
+        bench_output_drop_sub_this_file_multi_thread,
+        bench_output_drop_sub_other_multi_thread,
 
         bench_stub
     );
