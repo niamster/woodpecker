@@ -2,7 +2,7 @@ use logger::Record;
 
 pub fn formatter(record: &Record) -> Box<String> {
     Box::new(format!(
-        "|{}| {} {}:{}:{} {}\n",
+        concat!("|{}| {} {}", wp_separator!(), "{}:{} {}\n"),
         record.level,
         record.ts_utc(),
         record.module,

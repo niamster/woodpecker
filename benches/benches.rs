@@ -92,27 +92,27 @@ mod wpb {
 
     fn reset() {
         wp::logger::reset();
-        level!([wp::LogLevel::ERROR]);
+        wp_set_level!(wp::LogLevel::ERROR);
     }
 
     fn drop_output() {
-        handler!(Box::new(|_| {}));
+        wp_set_handler!(Box::new(|_| {}));
     }
 
     fn foo_loggers() {
         for idx in 0..FOO_LOGGERS_QTY {
-            level!(format!("foo::bar::qux::{}", idx), [wp::LogLevel::DEBUG]);
+            wp_set_level!(format!("foo::bar::qux::{}", idx), wp::LogLevel::DEBUG);
         }
     }
 
     fn foo_loggers_this_module() {
         foo_loggers();
-        level!(module_path!(), [wp::LogLevel::INFO]);
+        wp_set_level!(this_module!(), wp::LogLevel::INFO);
     }
 
     fn foo_loggers_this_file() {
         foo_loggers();
-        level!(format!("{}::{}", module_path!(), file!()), [wp::LogLevel::INFO]);
+        wp_set_level!(this_file!(), wp::LogLevel::INFO);
     }
 
     // No output, single thread

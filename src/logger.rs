@@ -292,10 +292,6 @@ pub fn is_string<T: ?Sized + Any>(_: &T) -> bool {
     TypeId::of::<String>() == TypeId::of::<T>() || TypeId::of::<&str>() == TypeId::of::<T>()
 }
 
-pub fn is_logger_level<T: ?Sized + Any>(_: &T) -> bool {
-    TypeId::of::<LogLevel>() == TypeId::of::<T>()
-}
-
 #[inline(always)]
 pub fn global_get_level() -> LogLevel {
     LogLevel::from(LOG_LEVEL.load(Ordering::Relaxed))
@@ -315,32 +311,35 @@ pub fn global_set_loggers(value: bool) {
 }
 
 #[macro_export]
-macro_rules! level {
-    // setters
-    ($logger:expr, [ $level:expr ]) => {{
+macro_rules! __wp_logger_is_string {
+    ($logger:expr) => {{
         if !$crate::logger::is_string(&$logger) {
             panic!("Logger name must be a string");
         }
+    }};
+}
+
+#[macro_export]
+macro_rules! wp_set_level {
+    ($logger:expr, $level:expr) => {{
+        __wp_logger_is_string!($logger);
         let root = $crate::logger::root();
         let mut root = root.write();
         root.set_level(&$logger.to_string(), $level);
         $crate::logger::global_set_loggers(true);
     }};
-    ([ $level:expr ]) => {{
+    ($level:expr) => {{
         $crate::logger::global_set_level($level);
     }};
+}
 
-    // getters
+#[macro_export]
+macro_rules! wp_get_level {
     () => {{
         $crate::logger::global_get_level()
     }};
     ($logger:expr) => {{
-        if !$crate::logger::is_string(&$logger) {
-            if $crate::logger::is_logger_level(&$logger) {
-                panic!(format!("You might have meant [LogLevel::{:?}]", $logger));
-            }
-            panic!("Logger name must be a string");
-        }
+        __wp_logger_is_string!($logger);
         if $crate::logger::global_has_loggers() {
             let root = $crate::logger::root();
             let level = root.read().get_level(&$logger.to_string());
@@ -352,7 +351,7 @@ macro_rules! level {
 }
 
 #[macro_export]
-macro_rules! __waction {
+macro_rules! __wp_write_action {
     ($func:ident($arg:expr)) => {{
         let root = $crate::logger::root();
         root.write().$func($arg);
@@ -360,24 +359,39 @@ macro_rules! __waction {
 }
 
 #[macro_export]
-macro_rules! handler {
+macro_rules! wp_set_handler {
     ($handler:expr) => {{
-        __waction!(handler($handler));
+        __wp_write_action!(handler($handler));
     }};
 }
 
 #[macro_export]
-macro_rules! formatter {
+macro_rules! wp_set_formatter {
     ($formatter:expr) => {{
-        __waction!(formatter($formatter));
+        __wp_write_action!(formatter($formatter));
     }};
+}
+
+#[macro_export]
+macro_rules! wp_separator {
+    () => ("@")
+}
+
+#[macro_export]
+macro_rules! this_file {
+    () => (concat!(module_path!(), wp_separator!(), file!()))
+}
+
+#[macro_export]
+macro_rules! this_module {
+    () => (module_path!())
 }
 
 #[macro_export]
 macro_rules! log {
     ($level:expr, $($arg:tt)*) => {{
         if $crate::logger::global_has_loggers() {
-            let path = concat!(module_path!(), "::", file!());
+            let path = this_file!();
             let root = $crate::logger::root();
             let root = root.read();
             if root.get_level(path) <= $level {
@@ -447,7 +461,6 @@ mod tests {
     use super::*;
 
     use std::sync::Mutex;
-    use std::path::PathBuf;
     use std::ops::Deref;
     use std::thread;
     use std::panic;
@@ -478,7 +491,7 @@ mod tests {
             let out = Arc::new(Mutex::new(String::new()));
             {
                 let out = out.clone();
-                handler!(Box::new(move |record| {
+                wp_set_handler!(Box::new(move |record| {
                     out.lock().unwrap().push_str(record.formatted().deref());
                 }));
             }
@@ -496,12 +509,12 @@ mod tests {
     fn test_logger_default() {
         run_test(|_| {
             // Default level is WARN
-            assert_eq!(level!(), LogLevel::WARN);
-            assert_eq!(level!("foo"), LogLevel::WARN);
+            assert_eq!(wp_get_level!(), LogLevel::WARN);
+            assert_eq!(wp_get_level!("foo"), LogLevel::WARN);
 
-            level!([LogLevel::INFO]);
-            assert_eq!(level!(), LogLevel::INFO);
-            assert_eq!(level!("foo"), LogLevel::INFO);
+            wp_set_level!(LogLevel::INFO);
+            assert_eq!(wp_get_level!(), LogLevel::INFO);
+            assert_eq!(wp_get_level!("foo"), LogLevel::INFO);
         });
     }
 
@@ -514,32 +527,26 @@ mod tests {
     #[test]
     #[should_panic(expected = "Logger name must be a string")]
     fn test_logger_type_string_0() {
-        level!(42);
+        wp_get_level!(42);
     }
 
     #[test]
     #[should_panic(expected = "Logger name must be a string")]
     fn test_logger_type_string_1() {
-        level!(42, [LogLevel::INFO]);
-    }
-
-    #[test]
-    #[should_panic(expected = "You might have meant [LogLevel::INFO]")]
-    fn test_logger_level_type() {
-        level!(LogLevel::INFO);
+        wp_set_level!(42, LogLevel::INFO);
     }
 
     #[test]
     fn test_logger_basic() {
         run_test(|buf| {
             for l in LEVELS.iter() {
-                level!([*l]);
-                assert_eq!(*l, level!());
+                wp_set_level!(*l);
+                assert_eq!(*l, wp_get_level!());
 
                 for l in LEVELS.iter() {
                     log!(*l, "msg");
                     let mut output = buf.lock().unwrap();
-                    if *l >= level!() {
+                    if *l >= wp_get_level!() {
                         assert!(output.as_str().contains("msg"));
                         assert!(output.as_str().contains(&l.to_string()));
                     } else {
@@ -549,7 +556,7 @@ mod tests {
                 }
             }
 
-            formatter!(Box::new(|record| {
+            wp_set_formatter!(Box::new(|record| {
                 Box::new(format!(
                     "{}:{}",
                     record.level,
@@ -558,11 +565,11 @@ mod tests {
             }));
 
             let logger = "woodpecker";
-            level!([LogLevel::WARN]);
-            level!(logger, [LogLevel::VERBOSE]);
-            assert_eq!(level!(), LogLevel::WARN);
-            assert_eq!(level!("foo"), LogLevel::WARN);
-            assert_eq!(level!(logger), LogLevel::VERBOSE);
+            wp_set_level!(LogLevel::WARN);
+            wp_set_level!(logger, LogLevel::VERBOSE);
+            assert_eq!(wp_get_level!(), LogLevel::WARN);
+            assert_eq!(wp_get_level!("foo"), LogLevel::WARN);
+            assert_eq!(wp_get_level!(logger), LogLevel::VERBOSE);
 
             {
                 let mut output = buf.lock().unwrap();
@@ -574,17 +581,17 @@ mod tests {
                 assert_eq!(output.as_str(), "VERBOSE:msg");
             }
 
-            level!([LogLevel::CRITICAL]);
+            wp_set_level!(LogLevel::CRITICAL);
 
-            let logger = module_path!();
-            level!(logger, [LogLevel::ERROR]);
-            assert_eq!(level!(), LogLevel::CRITICAL);
-            assert_eq!(level!(logger), LogLevel::ERROR);
+            let logger = this_module!();
+            wp_set_level!(logger, LogLevel::ERROR);
+            assert_eq!(wp_get_level!(), LogLevel::CRITICAL);
+            assert_eq!(wp_get_level!(logger), LogLevel::ERROR);
 
-            let logger = format!("{}::{}", module_path!(), file!());
-            level!(logger, [LogLevel::NOTICE]);
-            assert_eq!(level!(), LogLevel::CRITICAL);
-            assert_eq!(level!(logger), LogLevel::NOTICE);
+            let logger = this_file!();
+            wp_set_level!(logger, LogLevel::NOTICE);
+            assert_eq!(wp_get_level!(), LogLevel::CRITICAL);
+            assert_eq!(wp_get_level!(logger), LogLevel::NOTICE);
 
             {
                 let mut output = buf.lock().unwrap();
@@ -595,23 +602,6 @@ mod tests {
                 let output = buf.lock().unwrap();
                 assert_eq!(output.as_str(), "NOTICE:msg");
             }
-
-            level!("woodpecker", [LogLevel::CRITICAL]);
-
-            let logger = format!("{}::{}", module_path!(), PathBuf::from(file!()).parent().unwrap().display());
-            level!(logger, [LogLevel::INFO]);
-            assert_eq!(level!(), LogLevel::CRITICAL);
-            assert_eq!(level!(logger), LogLevel::INFO);
-
-            {
-                let mut output = buf.lock().unwrap();
-                output.clear();
-                drop(output);
-                info!("msg");
-                verbose!("msg");
-                let output = buf.lock().unwrap();
-                assert_eq!(output.as_str(), "INFO:msg");
-            }
         });
     }
 
@@ -621,12 +611,12 @@ mod tests {
             let out = Arc::new(RwLock::new(String::new()));
             {
                 let out = out.clone();
-                handler!(Box::new(move |record| {
+                wp_set_handler!(Box::new(move |record| {
                     out.write().push_str(record.msg().deref());
                     out.write().push_str("|");
                 }));
 
-                level!([LogLevel::INFO]);
+                wp_set_level!(LogLevel::INFO);
                 info!("msg");
                 debug!("foo");
             }
@@ -641,10 +631,10 @@ mod tests {
             let out = Arc::new(RwLock::new(String::new()));
             {
                 let out = out.clone();
-                handler!(Box::new(move |record| {
+                wp_set_handler!(Box::new(move |record| {
                     out.write().push_str(record.formatted().deref());
                 }));
-                formatter!(Box::new(|record| {
+                wp_set_formatter!(Box::new(|record| {
                     Box::new(format!(
                         "{}:{}|",
                         record.level,
@@ -652,7 +642,7 @@ mod tests {
                     ))
                 }));
 
-                level!([LogLevel::INFO]);
+                wp_set_level!(LogLevel::INFO);
                 info!("msg");
                 debug!("foo");
             }
@@ -667,10 +657,10 @@ mod tests {
             let out = Arc::new(RwLock::new(String::new()));
             {
                 let out = out.clone();
-                handler!(Box::new(move |record| {
+                wp_set_handler!(Box::new(move |record| {
                     out.write().push_str(record.formatted().deref());
                 }));
-                formatter!(Box::new(move |record| {
+                wp_set_formatter!(Box::new(move |record| {
                     Box::new(format!(
                         "{}:{}",
                         record.level,
@@ -679,7 +669,7 @@ mod tests {
                 }));
 
                 let mut threads = Vec::new();
-                level!([LogLevel::INFO]);
+                wp_set_level!(LogLevel::INFO);
                 for idx in 0..thqty {
                     threads.push(thread::spawn(move || {
                         thread::yield_now();
