@@ -24,6 +24,7 @@ use std::any::{Any, TypeId};
 
 #[derive(PartialEq, PartialOrd, Clone, Copy, Debug)]
 pub enum LogLevel {
+    TRACE,
     DEBUG,
     VERBOSE,
     INFO,
@@ -36,6 +37,7 @@ pub enum LogLevel {
 impl From<LogLevel> for isize {
     fn from(orig: LogLevel) -> isize {
         match orig {
+            LogLevel::TRACE => -30,
             LogLevel::DEBUG => -20,
             LogLevel::VERBOSE => -10,
             LogLevel::INFO => 0,
@@ -51,6 +53,7 @@ impl From<isize> for LogLevel {
     #[inline(always)]
     fn from(orig: isize) -> LogLevel {
         match orig {
+            -30 => LogLevel::TRACE,
             -20 => LogLevel::DEBUG,
             -10 => LogLevel::VERBOSE,
             0   => LogLevel::INFO,
@@ -63,7 +66,8 @@ impl From<isize> for LogLevel {
     }
 }
 
-pub const LEVELS: [LogLevel; 7] = [
+pub const LEVELS: [LogLevel; 8] = [
+    LogLevel::TRACE,
     LogLevel::DEBUG,
     LogLevel::VERBOSE,
     LogLevel::INFO,
@@ -77,6 +81,7 @@ impl fmt::Display for LogLevel {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            &LogLevel::TRACE => write!(f, "TRACE"),
             &LogLevel::DEBUG => write!(f, "DEBUG"),
             &LogLevel::VERBOSE => write!(f, "VERBOSE"),
             &LogLevel::INFO => write!(f, "INFO"),
