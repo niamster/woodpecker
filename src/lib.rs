@@ -5,10 +5,16 @@
 // except according to those terms.
 
 #[macro_use]
-pub mod logger;
+pub mod helpers;
 
-pub use logger::LogLevel;
-pub use logger::Record;
+pub mod levels;
+pub use levels::LogLevel;
+
+pub mod record;
+pub use record::Record;
+
+#[macro_use]
+pub mod logger;
 
 pub mod handlers;
 pub mod formatters;

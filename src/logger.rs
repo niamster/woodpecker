@@ -4,9 +4,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-extern crate chrono;
-use self::chrono::prelude::*;
-
 extern crate parking_lot;
 use self::parking_lot::RwLock;
 
@@ -17,188 +14,16 @@ use std::sync::{Arc, Once, ONCE_INIT};
 use std::sync::atomic::{AtomicIsize, AtomicBool, Ordering, ATOMIC_ISIZE_INIT, ATOMIC_BOOL_INIT};
 use std::collections::LinkedList;
 use std::fmt;
-use std::fmt::Write;
-use std::any::{Any, TypeId};
 
 // TODO: per-thread log
 
-#[derive(PartialEq, PartialOrd, Clone, Copy, Debug)]
-pub enum LogLevel {
-    TRACE,
-    DEBUG,
-    VERBOSE,
-    INFO,
-    NOTICE,
-    WARN,
-    ERROR,
-    CRITICAL,
-}
-
-impl From<LogLevel> for isize {
-    fn from(orig: LogLevel) -> isize {
-        match orig {
-            LogLevel::TRACE => -30,
-            LogLevel::DEBUG => -20,
-            LogLevel::VERBOSE => -10,
-            LogLevel::INFO => 0,
-            LogLevel::NOTICE => 10,
-            LogLevel::WARN => 20,
-            LogLevel::ERROR => 30,
-            LogLevel::CRITICAL => 40,
-        }
-    }
-}
-
-impl From<isize> for LogLevel {
-    #[inline(always)]
-    fn from(orig: isize) -> LogLevel {
-        match orig {
-            -30 => LogLevel::TRACE,
-            -20 => LogLevel::DEBUG,
-            -10 => LogLevel::VERBOSE,
-            0   => LogLevel::INFO,
-            10  => LogLevel::NOTICE,
-            20  => LogLevel::WARN,
-            30  => LogLevel::ERROR,
-            40  => LogLevel::CRITICAL,
-            _   => panic!("Unsupported log level {}", orig),
-        }
-    }
-}
-
-pub const LEVELS: [LogLevel; 8] = [
-    LogLevel::TRACE,
-    LogLevel::DEBUG,
-    LogLevel::VERBOSE,
-    LogLevel::INFO,
-    LogLevel::NOTICE,
-    LogLevel::WARN,
-    LogLevel::ERROR,
-    LogLevel::CRITICAL
-];
-
-impl fmt::Display for LogLevel {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &LogLevel::TRACE => write!(f, "TRACE"),
-            &LogLevel::DEBUG => write!(f, "DEBUG"),
-            &LogLevel::VERBOSE => write!(f, "VERBOSE"),
-            &LogLevel::INFO => write!(f, "INFO"),
-            &LogLevel::NOTICE => write!(f, "NOTICE"),
-            &LogLevel::WARN => write!(f, "WARN"),
-            &LogLevel::ERROR => write!(f, "ERROR"),
-            &LogLevel::CRITICAL => write!(f, "CRITICAL"),
-        }
-    }
-}
+use levels::LogLevel;
+use record::Record;
+use formatters::Formatter;
+use handlers::Handler;
 
 pub static LOG_LEVEL: AtomicIsize = ATOMIC_ISIZE_INIT;
 pub static HAS_SUBLOGGERS: AtomicBool = ATOMIC_BOOL_INIT;
-
-struct PRecord<'a> {
-    msg: RwLock<Option<Arc<Box<String>>>>,
-    formatted: RwLock<Option<Arc<Box<String>>>>,
-    formatter: &'a Formatter<'a>,
-    ts_utc: RwLock<Option<Arc<DateTime<UTC>>>>,
-}
-
-impl<'a> PRecord<'a> {
-    #[inline(always)]
-    fn new(formatter: &'a Formatter<'a>) -> Self {
-        PRecord {
-            msg: RwLock::new(None),
-            formatted: RwLock::new(None),
-            formatter: formatter,
-            ts_utc: RwLock::new(None),
-        }
-    }
-
-    pub fn msg(&self, record: &Record) -> Arc<Box<String>> {
-        {
-            let mut msg = self.msg.write();
-            if msg.is_none() {
-                let mut mstr = String::new();
-                mstr.write_fmt(record.args).unwrap();
-
-                *msg = Some(Arc::new(Box::new(mstr)));
-            }
-        }
-        let msg = self.msg.read();
-        let msg = msg.as_ref().unwrap();
-        msg.clone()
-    }
-
-    pub fn formatted(&self, record: &Record) -> Arc<Box<String>> {
-        {
-            let mut formatted = self.formatted.write();
-            if formatted.is_none() {
-                *formatted = Some(Arc::new((self.formatter)(record)));
-            }
-        }
-        let formatted = self.formatted.read();
-        let formatted = formatted.as_ref().unwrap();
-        formatted.clone()
-    }
-
-    pub fn ts_utc(&self, record: &Record) -> Arc<DateTime<UTC>> {
-        {
-            let mut ts_utc = self.ts_utc.write();
-            if ts_utc.is_none() {
-                let naive = chrono::NaiveDateTime::from_timestamp(record.ts.sec, record.ts.nsec as u32);
-                *ts_utc = Some(Arc::new(chrono::DateTime::from_utc(naive, chrono::UTC)));
-            }
-        }
-        let ts_utc = self.ts_utc.read();
-        let ts_utc = ts_utc.as_ref().unwrap();
-        ts_utc.clone()
-    }
-}
-
-#[derive(Clone)]
-pub struct Record<'a> {
-    pub level: LogLevel,
-    pub module: &'static str,
-    pub file: &'static str,
-    pub line: u32,
-    pub ts: time::Timespec,
-    pub args: fmt::Arguments<'a>,
-
-    precord: Arc<PRecord<'a>>,
-}
-
-impl<'a> Record<'a> {
-    #[inline(always)]
-    fn new(level: LogLevel, module: &'static str, file: &'static str, line: u32,
-           ts: time::Timespec, args: fmt::Arguments<'a>,
-           formatter: &'a Formatter<'a>) -> Self {
-        Record {
-            level: level,
-            module: module,
-            file: file,
-            line: line,
-            ts: ts,
-            args: args,
-
-            precord: Arc::new(PRecord::new(formatter)),
-        }
-    }
-
-    pub fn msg(&self) -> Arc<Box<String>> {
-        self.precord.msg(self)
-    }
-
-    pub fn formatted(&self) -> Arc<Box<String>> {
-        self.precord.formatted(self)
-    }
-
-    pub fn ts_utc(&self) -> Arc<DateTime<UTC>> {
-        self.precord.ts_utc(self)
-    }
-}
-
-pub type Formatter<'a> = Box<Fn(&Record) -> Box<String> + 'a>;
-pub type Handler<'a> = Box<Fn(&Record) + 'a>;
 
 pub struct RootLogger<'a> {
     loggers: Vec<(String, LogLevel)>,
@@ -293,10 +118,6 @@ pub fn reset() {
     root.reset();
 }
 
-pub fn is_string<T: ?Sized + Any>(_: &T) -> bool {
-    TypeId::of::<String>() == TypeId::of::<T>() || TypeId::of::<&str>() == TypeId::of::<T>()
-}
-
 #[inline(always)]
 pub fn global_get_level() -> LogLevel {
     LogLevel::from(LOG_LEVEL.load(Ordering::Relaxed))
@@ -313,15 +134,6 @@ pub fn global_has_loggers() -> bool {
 
 pub fn global_set_loggers(value: bool) {
     HAS_SUBLOGGERS.store(value, Ordering::Relaxed);
-}
-
-#[macro_export]
-macro_rules! __wp_logger_is_string {
-    ($logger:expr) => {{
-        if !$crate::logger::is_string(&$logger) {
-            panic!("Logger name must be a string");
-        }
-    }};
 }
 
 #[macro_export]
@@ -380,16 +192,6 @@ macro_rules! wp_set_formatter {
 #[macro_export]
 macro_rules! wp_separator {
     () => ("@")
-}
-
-#[macro_export]
-macro_rules! this_file {
-    () => (concat!(module_path!(), wp_separator!(), file!()))
-}
-
-#[macro_export]
-macro_rules! this_module {
-    () => (module_path!())
 }
 
 #[macro_export]
@@ -464,6 +266,8 @@ macro_rules! critical {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use levels::LEVELS;
 
     use std::sync::Mutex;
     use std::ops::Deref;
