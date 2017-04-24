@@ -1,7 +1,7 @@
 [package]
 name = "woodpecker"
 version = "0.1.0"
-authors = ["Dmytro Milinevskyy <milinevskyy@gmail.com>"]
+authors = ["Dmytro Milinevskyi <dmilinevskyi@gmail.com>"]
 
 [[bench]]
 name = "benches"
