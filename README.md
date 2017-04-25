@@ -1,3 +1,16 @@
+<p align="center">
+
+  <a href="https://github.com/niamster/woodpecker">
+  <img src="https://cdn.rawgit.com/niamster/woodpecker/master/logo/woodpecker.png" alt="woodpecker logo">
+  </a>
+  <br>
+
+  <a href="https://crates.io/crates/woodpecker">
+      <img src="https://img.shields.io/crates/d/woodpecker.svg" alt="woodpecker on crates.io">
+  </a>
+</p>
+
+
 # woodpecker - Logging for [Rust][rust]
 
 ### Table of Contents
@@ -11,12 +24,16 @@
 ### Introduction
 
 `woodpecker` is a logging framework for [Rust][rust].
+
 The goal is to have a fast, extensible and easy logging in [Rust][rust] application.
+
+[rust]: http://rust-lang.org
 
 ### Status
 
 The project is currently under development and doesn't provide a lot of features.
-Although the basic feature, logging is well supported!
+
+Although the basic feature **logging** is well supported!
 
 ### Features
 The main feature is almost zero overhead if no filtering rules are defined and log is not produced.
@@ -51,6 +68,7 @@ See [examples/tee.rs](examples/tee.rs) for quick overview.
 
 ### License
 Woodpecker project is licensed under Apache-2.0 license.
+
 Logo is licensed under Creative Commons Attribution (CC BY).
 
 ### Credits
