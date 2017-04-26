@@ -14,9 +14,16 @@
 
 use record::Record;
 
+/// Type of the log handlers function.
+///
+/// Pushes a log record into a log sink.
 pub type Handler<'a> = Box<Fn(&Record) + 'a>;
 
+/// Stdout log handler.
 pub mod stdout;
+/// Stderr log handler.
 pub mod stderr;
+/// File log handler.
 pub mod file;
+/// Rotating file log handler.
 pub mod rotating_file;

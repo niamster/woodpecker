@@ -72,6 +72,15 @@ impl Context {
     }
 }
 
+/// Pushes log record into a file.
+///
+/// The directories to the log file are created automatically.
+///
+/// Rotates the log file is it exceed the given `size` (in bytes).
+///
+/// Maintains up to `count` log files.
+///
+/// Each log file after rotation has a numeric suffix.
 pub fn handler(path: &Path, count: usize, size: u64) -> Handler<'static> {
     let ctx = Mutex::new(Context::new(path, count, size));
     Box::new(move |record| {

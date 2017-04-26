@@ -25,7 +25,9 @@ mod wpb {
     use std::thread;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Once, ONCE_INIT};
 
+    static ONCE: Once = ONCE_INIT;
     const THREADS_QTY: usize = 4;
     const FOO_LOGGERS_QTY: usize = 10;
 
@@ -105,12 +107,13 @@ mod wpb {
     }
 
     fn reset() {
+        ONCE.call_once(|| { wp::logger::init(); });
         wp::logger::reset();
         wp_set_level!(wp::LogLevel::ERROR);
     }
 
     fn drop_output() {
-        wp_set_handler!(Box::new(|_| {}));
+        wp_register_handler!(Box::new(|_| {}));
     }
 
     fn foo_loggers() {

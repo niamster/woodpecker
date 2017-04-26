@@ -14,15 +14,24 @@
 
 use std::fmt;
 
+/// The logging levels.
 #[derive(PartialEq, PartialOrd, Clone, Copy, Debug)]
 pub enum LogLevel {
+    /// Log all messages.
     TRACE,
+    /// Log only debug messages and above.
     DEBUG,
+    /// Log only verbose messages and above.
     VERBOSE,
+    /// Log only info messages and above.
     INFO,
+    /// Log only notice messages and above.
     NOTICE,
+    /// Log only warn messages and above.
     WARN,
+    /// Log only error messages and above.
     ERROR,
+    /// Log only critical messages.
     CRITICAL,
 }
 
@@ -58,6 +67,7 @@ impl From<isize> for LogLevel {
     }
 }
 
+#[doc(hidden)]
 pub const LEVELS: [LogLevel; 8] = [
     LogLevel::TRACE,
     LogLevel::DEBUG,

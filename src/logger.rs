@@ -23,16 +23,16 @@ use std::sync::atomic::{AtomicIsize, AtomicBool, Ordering, ATOMIC_ISIZE_INIT, AT
 use std::collections::LinkedList;
 use std::fmt;
 
-// TODO: per-thread log
-
 use levels::LogLevel;
 use record::Record;
 use formatters::Formatter;
 use handlers::Handler;
 
-pub static LOG_LEVEL: AtomicIsize = ATOMIC_ISIZE_INIT;
-pub static HAS_SUBLOGGERS: AtomicBool = ATOMIC_BOOL_INIT;
+static LOG_LEVEL: AtomicIsize = ATOMIC_ISIZE_INIT;
+static HAS_SUBLOGGERS: AtomicBool = ATOMIC_BOOL_INIT;
+static IS_INIT: AtomicBool = ATOMIC_BOOL_INIT;
 
+#[doc(hidden)]
 pub struct RootLogger<'a> {
     loggers: Vec<(String, LogLevel)>,
     formatter: Formatter<'a>,
@@ -40,6 +40,7 @@ pub struct RootLogger<'a> {
 }
 
 impl<'a> RootLogger<'a> {
+    #[doc(hidden)]
     pub fn new() -> Self {
         RootLogger {
             loggers: Vec::new(),
@@ -48,18 +49,22 @@ impl<'a> RootLogger<'a> {
         }
     }
 
+    #[doc(hidden)]
     pub fn reset(&mut self) {
         *self = Self::new();
     }
 
+    #[doc(hidden)]
     pub fn handler(&mut self, handler: Handler<'a>) {
         self.handlers.push_front(handler);
     }
 
+    #[doc(hidden)]
     pub fn formatter(&mut self, formatter: Formatter<'a>) {
         self.formatter = formatter;
     }
 
+    #[doc(hidden)]
     pub fn set_level(&mut self, path: &str, level: LogLevel) {
         self.loggers.retain(|&(ref name, _)| !(name.len() > path.len() && name.starts_with(path)));
         match self.loggers.binary_search_by(|&(ref k, _)| path.cmp(&k)) {
@@ -73,6 +78,7 @@ impl<'a> RootLogger<'a> {
         };
     }
 
+    #[doc(hidden)]
     #[inline(always)]
     pub fn get_level(&self, path: &str) -> LogLevel {
         match self.loggers.binary_search_by(|&(ref k, _)| path.cmp(&k)) {
@@ -91,6 +97,7 @@ impl<'a> RootLogger<'a> {
         }
     }
 
+    #[doc(hidden)]
     pub fn log(&self, level: LogLevel, module: &'static str, file: &'static str, line: u32, args: fmt::Arguments) {
         let record = Record::new(level, module, file, line, time::get_time(), args, &self.formatter);
         if self.handlers.is_empty() {
@@ -103,13 +110,14 @@ impl<'a> RootLogger<'a> {
     }
 }
 
+#[doc(hidden)]
 #[inline(always)]
 pub fn root() -> Arc<RwLock<RootLogger<'static>>> {
     static mut LOGGERS: *const Arc<RwLock<RootLogger<'static>>> = 0 as *const Arc<RwLock<RootLogger>>;
     static ONCE: Once = ONCE_INIT;
     unsafe {
         ONCE.call_once(|| {
-            LOG_LEVEL.store(isize::from(LogLevel::WARN), Ordering::Relaxed);
+            assert!(IS_INIT.load(Ordering::Relaxed));
             let root = Arc::new(RwLock::new(RootLogger::new()));
             LOGGERS = mem::transmute(Box::new(root));
         });
@@ -118,6 +126,7 @@ pub fn root() -> Arc<RwLock<RootLogger<'static>>> {
     }
 }
 
+#[doc(hidden)]
 pub fn reset() {
     let root = root();
     let mut root = root.write();
@@ -126,24 +135,80 @@ pub fn reset() {
     root.reset();
 }
 
+/// Initializes the crate's kitchen.
+///
+/// # Example
+///
+/// ```rust
+/// #[macro_use]
+/// extern crate woodpecker;
+/// use woodpecker as wp;
+///
+/// fn main() {
+///     wp::init();
+///
+///     wp_set_level!(wp::LogLevel::INFO);
+///     info!("Coucou!");
+/// }
+///
+/// ```
+pub fn init() {
+    // NOTE: it's not a real guard.
+    // The `init` function is supposed to be called once on init.
+    assert!(!IS_INIT.swap(true, Ordering::Relaxed));
+    reset();
+}
+
+#[doc(hidden)]
 #[inline(always)]
 pub fn global_get_level() -> LogLevel {
     LogLevel::from(LOG_LEVEL.load(Ordering::Relaxed))
 }
 
+#[doc(hidden)]
 pub fn global_set_level(level: LogLevel) {
     LOG_LEVEL.store(level.into(), Ordering::Relaxed);
 }
 
+#[doc(hidden)]
 #[inline(always)]
 pub fn global_has_loggers() -> bool {
     HAS_SUBLOGGERS.load(Ordering::Relaxed)
 }
 
+#[doc(hidden)]
 pub fn global_set_loggers(value: bool) {
     HAS_SUBLOGGERS.store(value, Ordering::Relaxed);
 }
 
+/// Sets the log level.
+///
+/// Sets global log level if called without the arguments or
+/// according to the specified filter otherwise.
+///
+/// See documentation for the [`wp_get_level`][wp_get_level] more for more details on the hierarchy and filtering.
+/// [wp_get_level]: macro.wp_get_level.html
+///
+/// # Example
+///
+/// ```rust
+/// #[macro_use]
+/// extern crate woodpecker;
+/// use woodpecker as wp;
+///
+/// fn main() {
+///     wp::init();
+///
+///     let logger = "foo::bar";
+///
+///     wp_set_level!(wp::LogLevel::INFO);
+///     wp_set_level!(logger, wp::LogLevel::CRITICAL);
+///
+///     assert_eq!(wp_get_level!(), wp::LogLevel::INFO);
+///     assert_eq!(wp_get_level!(logger), wp::LogLevel::CRITICAL);
+/// }
+///
+/// ```
 #[macro_export]
 macro_rules! wp_set_level {
     ($logger:expr, $level:expr) => {{
@@ -158,6 +223,44 @@ macro_rules! wp_set_level {
     }};
 }
 
+/// Gets the log level.
+///
+/// Returns global log level if called without the arguments or
+/// according to the specified filter string otherwise.
+///
+/// The filtering rules are hierarchical.
+/// It means that if for example there's a rule that states that the module `foo::bar`
+/// has log level `WARN`, then all submodules inherit this log level.
+/// At the same time another rule may override the inherited level.
+/// For example `foo::bar::qux@xyz.rs` has log level `DEBUG`.
+///
+/// # Example
+///
+/// ```rust
+/// #[macro_use]
+/// extern crate woodpecker;
+/// use woodpecker as wp;
+///
+/// fn main() {
+///     wp::init();
+///
+///     let logger = "foo::bar";
+///
+///     assert_eq!(wp_get_level!(), wp::LogLevel::WARN);
+///     assert_eq!(wp_get_level!(logger), wp::LogLevel::WARN);
+///
+///     wp_set_level!(wp::LogLevel::INFO);
+///     wp_set_level!(logger, wp::LogLevel::CRITICAL);
+///
+///     assert_eq!(wp_get_level!(), wp::LogLevel::INFO);
+///     assert_eq!(wp_get_level!(logger), wp::LogLevel::CRITICAL);
+///
+///     // Since the logs follow the hierarchy following statements are valid.
+///     assert_eq!(wp_get_level!("foo::bar::qux"), wp::LogLevel::CRITICAL);
+///     assert_eq!(wp_get_level!("foo"), wp::LogLevel::INFO);
+/// }
+///
+/// ```
 #[macro_export]
 macro_rules! wp_get_level {
     () => {{
@@ -175,6 +278,7 @@ macro_rules! wp_get_level {
     }};
 }
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! __wp_write_action {
     ($func:ident($arg:expr)) => {{
@@ -183,13 +287,98 @@ macro_rules! __wp_write_action {
     }};
 }
 
+/// Registers a log record handler.
+///
+/// The handler takes a log record as an argument and pushes it into a custom sink.
+///
+/// By default if no log handler is registered `woodpecker` emits
+/// log records into `stdout`.
+///
+/// If at least one handler is registered than the `stdout` handler
+/// must be registered explicitly if it's still desired.
+///
+/// See the definition of the [`Handler`][Handler] type for the details.
+/// [Handler]: handlers/type.Handler.html
+///
+/// # Example
+/// In this example string "foo" will be logged three times into `stdout`
+/// but only one caught by the log handler.
+///
+/// ```rust
+/// #[macro_use]
+/// extern crate woodpecker;
+/// use woodpecker as wp;
+///
+/// use std::sync::{Arc, Mutex};
+/// use std::ops::Deref;
+///
+/// fn main() {
+///     wp::init();
+///
+///     warn!("foo");
+///     let out = Arc::new(Mutex::new(String::new()));
+///     {
+///         wp_register_handler!(wp::handlers::stdout::handler());
+///         warn!("foo");
+///         let out = out.clone();
+///         wp_register_handler!(Box::new(move |record| {
+///             out.lock().unwrap().push_str(record.msg().deref());
+///         }));
+///
+///         warn!("foo");
+///     }
+///     assert_eq!(*out.lock().unwrap(), "foo".to_string());
+/// }
+///
+/// ```
 #[macro_export]
-macro_rules! wp_set_handler {
+macro_rules! wp_register_handler {
     ($handler:expr) => {{
         __wp_write_action!(handler($handler));
     }};
 }
 
+/// Sets a log record formatter.
+///
+/// A [`default`][default] formatter is used if not set explicitly.
+/// [default]: formatters/default/fn.formatter.html
+///
+/// The formatter function takes a log record as an argument and returns a string
+/// that will be used as a return value of [`Record::formatted`][Record::formatted] function.
+/// [Record::formatted]: record/struct.Record.html#method.formatted
+///
+/// See the definition of the [`Formatter`][Formatter] type for the details.
+/// [Formatter]: formatters/type.Formatter.html
+///
+/// # Example
+///
+/// ```rust
+/// #[macro_use]
+/// extern crate woodpecker;
+/// use woodpecker as wp;
+///
+/// use std::sync::{Arc, Mutex};
+/// use std::ops::Deref;
+///
+/// fn main() {
+///     wp::init();
+///
+///     wp_set_formatter!(Box::new(|record| {
+///         Box::new(format!("{}:{}", record.level, record.msg()))
+///     }));
+///     let out = Arc::new(Mutex::new(String::new()));
+///     {
+///         let out = out.clone();
+///         wp_register_handler!(Box::new(move |record| {
+///             out.lock().unwrap().push_str(record.formatted().deref());
+///         }));
+///
+///         warn!("foo");
+///     }
+///     assert_eq!(*out.lock().unwrap(), "WARN:foo".to_string());
+/// }
+///
+/// ```
 #[macro_export]
 macro_rules! wp_set_formatter {
     ($formatter:expr) => {{
@@ -197,11 +386,28 @@ macro_rules! wp_set_formatter {
     }};
 }
 
+/// A file-module separator.
+///
+/// This separator is used to separate module and file paths in the filter string.
 #[macro_export]
 macro_rules! wp_separator {
     () => ("@")
 }
 
+/// The main log entry.
+///
+/// Prepares and emits a log record if requested log [`level`][level] is greater or equal
+/// according to the filtering rules.
+///
+/// If the filtering rules deduce that the log level at the current position is [`WARN`][level] then the logs for
+/// the levels [`WARN`][level] and above([`ERROR`][level] and [`CRITICAL`][level]) are emitted.
+/// The logs for the levels below [`WARN`][level] (such as [`NOTICE`][level], [`INFO`][level], etc.) are dropped.
+///
+/// It does primary filtering based on the module and file paths of the caller.
+/// [level]: levels/enum.LogLevel.html
+///
+/// See documentation for the [`wp_get_level`][wp_get_level] more for more details on the hierarchy and filtering.
+/// [wp_get_level]: macro.wp_get_level.html
 #[macro_export]
 macro_rules! log {
     ($level:expr, $($arg:tt)*) => {{
@@ -222,6 +428,21 @@ macro_rules! log {
     }};
 }
 
+/// Produces log record for the `trace` log level.
+///
+/// See the [`log`][log] macro for the details.
+/// [log]: woodpecker/macro.log.html
+#[macro_export]
+macro_rules! trace {
+    ($($arg:tt)*) => {
+        log!($crate::LogLevel::TRACE, $($arg)*);
+    };
+}
+
+/// Produces log record for the `debug` log level.
+///
+/// See the [`log`][log] macro for the details.
+/// [log]: woodpecker/macro.log.html
 #[macro_export]
 macro_rules! debug {
     ($($arg:tt)*) => {
@@ -229,6 +450,10 @@ macro_rules! debug {
     };
 }
 
+/// Produces log for the `verbose` level.
+///
+/// See the [`log`][log] macro for the details.
+/// [log]: woodpecker/macro.log.html
 #[macro_export]
 macro_rules! verbose {
     ($($arg:tt)*) => {
@@ -236,6 +461,10 @@ macro_rules! verbose {
     };
 }
 
+/// Produces log record for the `info` log level.
+///
+/// See the [`log`][log] macro for the details.
+/// [log]: woodpecker/macro.log.html
 #[macro_export]
 macro_rules! info {
     ($($arg:tt)*) => {
@@ -243,6 +472,10 @@ macro_rules! info {
     };
 }
 
+/// Produces log record for the `notice` log level.
+///
+/// See the [`log`][log] macro for the details.
+/// [log]: woodpecker/macro.log.html
 #[macro_export]
 macro_rules! notice {
     ($($arg:tt)*) => {
@@ -250,6 +483,10 @@ macro_rules! notice {
     };
 }
 
+/// Produces log record for the `warn` log level.
+///
+/// See the [`log`][log] macro for the details.
+/// [log]: woodpecker/macro.log.html
 #[macro_export]
 macro_rules! warn {
     ($($arg:tt)*) => {
@@ -257,6 +494,10 @@ macro_rules! warn {
     };
 }
 
+/// Produces log record for the `error` log level.
+///
+/// See the [`log`][log] macro for the details.
+/// [log]: woodpecker/macro.log.html
 #[macro_export]
 macro_rules! error {
     ($($arg:tt)*) => {
@@ -264,6 +505,10 @@ macro_rules! error {
     };
 }
 
+/// Produces log record for the `critical` log level.
+///
+/// See the [`log`][log] macro for the details.
+/// [log]: woodpecker/macro.log.html
 #[macro_export]
 macro_rules! critical {
     ($($arg:tt)*) => {
@@ -292,6 +537,8 @@ mod tests {
 
         let context = unsafe {
             ONCE.call_once(|| {
+                init();
+
                 let context = Arc::new(TContext {
                     lock: Mutex::new(0),
                 });
@@ -308,7 +555,7 @@ mod tests {
             let out = Arc::new(Mutex::new(String::new()));
             {
                 let out = out.clone();
-                wp_set_handler!(Box::new(move |record| {
+                wp_register_handler!(Box::new(move |record| {
                     out.lock().unwrap().push_str(record.formatted().deref());
                 }));
             }
@@ -332,6 +579,19 @@ mod tests {
             wp_set_level!(LogLevel::INFO);
             assert_eq!(wp_get_level!(), LogLevel::INFO);
             assert_eq!(wp_get_level!("foo"), LogLevel::INFO);
+        });
+    }
+
+    #[test]
+    fn test_logger_hierarchy() {
+        run_test(|_| {
+            wp_set_level!("foo::bar::qux", LogLevel::CRITICAL);
+
+            assert_eq!(wp_get_level!(), LogLevel::WARN);
+            assert_eq!(wp_get_level!("foo::bar::qux::xyz"), LogLevel::CRITICAL);
+            assert_eq!(wp_get_level!("foo::bar::qux"), LogLevel::CRITICAL);
+            assert_eq!(wp_get_level!("foo::bar"), LogLevel::WARN);
+            assert_eq!(wp_get_level!("foo"), LogLevel::WARN);
         });
     }
 
@@ -428,7 +688,7 @@ mod tests {
             let out = Arc::new(RwLock::new(String::new()));
             {
                 let out = out.clone();
-                wp_set_handler!(Box::new(move |record| {
+                wp_register_handler!(Box::new(move |record| {
                     out.write().push_str(record.msg().deref());
                     out.write().push_str("|");
                 }));
@@ -448,7 +708,7 @@ mod tests {
             let out = Arc::new(RwLock::new(String::new()));
             {
                 let out = out.clone();
-                wp_set_handler!(Box::new(move |record| {
+                wp_register_handler!(Box::new(move |record| {
                     out.write().push_str(record.formatted().deref());
                 }));
                 wp_set_formatter!(Box::new(|record| {
@@ -474,7 +734,7 @@ mod tests {
             let out = Arc::new(RwLock::new(String::new()));
             {
                 let out = out.clone();
-                wp_set_handler!(Box::new(move |record| {
+                wp_register_handler!(Box::new(move |record| {
                     out.write().push_str(record.formatted().deref());
                 }));
                 wp_set_formatter!(Box::new(move |record| {

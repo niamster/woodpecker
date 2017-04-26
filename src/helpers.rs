@@ -14,10 +14,12 @@
 
 use std::any::{Any, TypeId};
 
+#[doc(hidden)]
 pub fn is_string<T: ?Sized + Any>(_: &T) -> bool {
     TypeId::of::<String>() == TypeId::of::<T>() || TypeId::of::<&str>() == TypeId::of::<T>()
 }
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! __wp_logger_is_string {
     ($logger:expr) => {{
@@ -27,11 +29,13 @@ macro_rules! __wp_logger_is_string {
     }};
 }
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! this_file {
     () => (concat!(module_path!(), wp_separator!(), file!()))
 }
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! this_module {
     () => (module_path!())

@@ -14,6 +14,13 @@
 
 use record::Record;
 
+/// A default log formatter which outputs the record in as a line.
+///
+/// # Example:
+///
+/// ```ignore
+/// |<log-level>| time module@file:line <message>
+/// ```
 pub fn formatter(record: &Record) -> Box<String> {
     Box::new(format!(
         concat!("|{}| {} {}", wp_separator!(), "{}:{} {}\n"),

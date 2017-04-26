@@ -8,6 +8,9 @@
   <a href="https://crates.io/crates/woodpecker">
       <img src="https://img.shields.io/crates/d/woodpecker.svg" alt="woodpecker on crates.io">
   </a>
+  <a href="https://docs.rs/woodpecker">
+      <img src="https://docs.rs/woodpecker/badge.svg" alt="docs-rs: woodpecker documentation">
+  </a>
 </p>
 
 
@@ -47,6 +50,11 @@ Currently supported:
 * logging to a file
 * log file rotation (by size)
 
+### Documentation
+
+Most of the useful documentation can be gotten using rustdoc.
+
+Check it out on [docs.rs/woodpecker](https://docs.rs/woodpecker).
 
 ### In your project
 

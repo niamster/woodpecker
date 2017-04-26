@@ -1,11 +1,12 @@
 [package]
 name = "woodpecker"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Dmytro Milinevskyi <dmilinevskyi@gmail.com>"]
 description = "Fast and extensible logging for Rust"
 keywords = ["log", "logging", "fast", "extensible"]
 categories = ["development-tools::debugging"]
 license = "Apache-2.0"
+documentation = "https://docs.rs/woodpecker"
 homepage = "https://github.com/niamster/woodpecker"
 repository = "https://github.com/niamster/woodpecker"
 readme = "README.md"

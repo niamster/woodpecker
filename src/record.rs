@@ -46,7 +46,7 @@ impl<'a> PRecord<'a> {
         }
     }
 
-    pub fn msg(&self, record: &Record) -> Arc<Box<String>> {
+    fn msg(&self, record: &Record) -> Arc<Box<String>> {
         {
             let mut msg = self.msg.write();
             if msg.is_none() {
@@ -61,7 +61,7 @@ impl<'a> PRecord<'a> {
         msg.clone()
     }
 
-    pub fn formatted(&self, record: &Record) -> Arc<Box<String>> {
+    fn formatted(&self, record: &Record) -> Arc<Box<String>> {
         {
             let mut formatted = self.formatted.write();
             if formatted.is_none() {
@@ -73,7 +73,7 @@ impl<'a> PRecord<'a> {
         formatted.clone()
     }
 
-    pub fn ts_utc(&self, record: &Record) -> Arc<DateTime<UTC>> {
+    fn ts_utc(&self, record: &Record) -> Arc<DateTime<UTC>> {
         {
             let mut ts_utc = self.ts_utc.write();
             if ts_utc.is_none() {
@@ -87,19 +87,28 @@ impl<'a> PRecord<'a> {
     }
 }
 
+/// Log record that holds information where log was recorded
+/// and the message details.
 #[derive(Clone)]
 pub struct Record<'a> {
+    /// Log level of the record.
     pub level: LogLevel,
+    /// Module path.
     pub module: &'static str,
+    /// File path.
     pub file: &'static str,
+    /// Line number.
     pub line: u32,
+    /// Timestamp.
     pub ts: time::Timespec,
+    #[doc(hidden)]
     pub args: fmt::Arguments<'a>,
 
     precord: Arc<PRecord<'a>>,
 }
 
 impl<'a> Record<'a> {
+    #[doc(hidden)]
     #[inline(always)]
     pub fn new(level: LogLevel, module: &'static str, file: &'static str, line: u32,
            ts: time::Timespec, args: fmt::Arguments<'a>,
@@ -116,14 +125,17 @@ impl<'a> Record<'a> {
         }
     }
 
+    /// Returns user log message as a formatted string.
     pub fn msg(&self) -> Arc<Box<String>> {
         self.precord.msg(self)
     }
 
+    /// Returns record formatted as a string using given formatter.
     pub fn formatted(&self) -> Arc<Box<String>> {
         self.precord.formatted(self)
     }
 
+    /// Returns timestamp in UTC.
     pub fn ts_utc(&self) -> Arc<DateTime<UTC>> {
         self.precord.ts_utc(self)
     }

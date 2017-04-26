@@ -39,6 +39,9 @@ impl Context {
     }
 }
 
+/// Pushes formatted log record into a file.
+///
+/// The directories to the log file are created automatically.
 pub fn handler(path: &Path) -> Handler<'static> {
     let ctx = Mutex::new(Context::new(path));
     Box::new(move |record| {

@@ -14,6 +14,10 @@
 
 use record::Record;
 
+/// Type of the formatting function.
+///
+/// Returns a formatted log record.
 pub type Formatter<'a> = Box<Fn(&Record) -> Box<String> + 'a>;
 
+/// Default log formatter.
 pub mod default;

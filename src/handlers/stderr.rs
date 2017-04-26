@@ -17,12 +17,14 @@ use std::ops::Deref;
 
 use handlers::Handler;
 
+#[doc(hidden)]
 pub fn emit(formatted: &String) {
     let stderr = io::stderr();
     let mut stderr = stderr.lock();
     stderr.write(formatted.as_bytes()).unwrap();
 }
 
+/// Pushes formatted log record into stderr.
 pub fn handler() -> Handler<'static> {
     Box::new(|record| {
         emit(record.formatted().deref());
