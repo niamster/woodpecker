@@ -8,6 +8,9 @@
   <a href="https://travis-ci.org/niamster/woodpecker">
       <img src="https://img.shields.io/travis/niamster/woodpecker/master.svg" alt="Travis CI Build Status">
   </a>
+  <a href="https://ci.appveyor.com/project/niamster/woodpecker">
+      <img src="https://ci.appveyor.com/api/projects/status/ljd6pkh8fsx7oh7a/branch/master?svg=true" alt="Appveyor CI Build Status">
+  </a>
   <a href="https://crates.io/crates/woodpecker">
       <img src="https://img.shields.io/crates/d/woodpecker.svg" alt="woodpecker on crates.io">
   </a>
