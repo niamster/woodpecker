@@ -61,11 +61,11 @@ impl Context {
             for i in 1..rlen {
                 let old = &self.logs[i];
                 if old.exists() {
-                    let _ = rename(old, &self.logs[i-1]);
+                    let _ = rename(old, &self.logs[i - 1]);
                 }
             }
             let _ = self.file.flush();
-            let _ = rename(&self.path, &self.logs[rlen-1]);
+            let _ = rename(&self.path, &self.logs[rlen - 1]);
             self.file = Self::open(&self.path);
             self.current = 0;
         }
@@ -118,19 +118,19 @@ mod tests {
         let count = 5;
         let size = 20;
         let mut ctx = super::Context::new(&path, count, size);
-        let mut logs = super::Context::logs(&path, count+1);
+        let mut logs = super::Context::logs(&path, count + 1);
         logs.reverse();
-        let elogs = &logs[..logs.len()-1];
-        let flog = &logs[logs.len()-1];
+        let elogs = &logs[..logs.len() - 1];
+        let flog = &logs[logs.len() - 1];
 
         assert!(path.exists());
         assert_eq!(path.metadata().unwrap().len(), 0);
 
-        push(&mut ctx, size/2);
-        assert_eq!(path.metadata().unwrap().len(), size/2);
+        push(&mut ctx, size / 2);
+        assert_eq!(path.metadata().unwrap().len(), size / 2);
         tlogs(elogs, size, 0);
 
-        push(&mut ctx, size/2);
+        push(&mut ctx, size / 2);
         assert_eq!(path.metadata().unwrap().len(), 0);
         tlogs(elogs, size, 1);
 

@@ -62,8 +62,12 @@ fn main() {
     loop {
         let mut buffer = String::new();
         match stdin.read_line(&mut buffer) {
-            Ok(count) if count > 0 => { info!("{}", buffer); },
-            _ => { break; },
+            Ok(count) if count > 0 => {
+                info!("{}", buffer);
+            },
+            _ => {
+                break;
+            },
         }
     }
 }

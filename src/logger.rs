@@ -87,7 +87,7 @@ impl<'a> RootLogger<'a> {
                 level
             },
             Err(pos) => {
-                let &(ref name, level) = &self.loggers[if pos > 0 { pos - 1} else { pos }];
+                let &(ref name, level) = &self.loggers[if pos > 0 { pos - 1 } else { pos }];
                 if path.starts_with(name) {
                     level
                 } else {
