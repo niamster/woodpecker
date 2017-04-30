@@ -186,8 +186,7 @@ pub fn global_set_loggers(value: bool) {
 /// Sets global log level if called without the arguments or
 /// according to the specified filter otherwise.
 ///
-/// See documentation for the [`wp_get_level`][wp_get_level] more for more details on the hierarchy and filtering.
-/// [wp_get_level]: macro.wp_get_level.html
+/// See documentation for the [wp_get_level](macro.wp_get_level.html) more for more details on the hierarchy and filtering.
 ///
 /// # Example
 ///
@@ -297,8 +296,7 @@ macro_rules! __wp_write_action {
 /// If at least one handler is registered than the `stdout` handler
 /// must be registered explicitly if it's still desired.
 ///
-/// See the definition of the [`Handler`][Handler] type for the details.
-/// [Handler]: handlers/type.Handler.html
+/// See the definition of the [`Handler`](handlers/type.Handler.html) type for the details.
 ///
 /// # Example
 /// In this example string "foo" will be logged three times into `stdout`
@@ -340,15 +338,12 @@ macro_rules! wp_register_handler {
 
 /// Sets a log record formatter.
 ///
-/// A [`default`][default] formatter is used if not set explicitly.
-/// [default]: formatters/default/fn.formatter.html
+/// A [default](formatters/default/fn.formatter.html) formatter is used if not set explicitly.
 ///
 /// The formatter function takes a log record as an argument and returns a string
-/// that will be used as a return value of [`Record::formatted`][Record::formatted] function.
-/// [Record::formatted]: record/struct.Record.html#method.formatted
+/// that will be used as a return value of [Record::formatted](record/struct.Record.html#method.formatted) function.
 ///
-/// See the definition of the [`Formatter`][Formatter] type for the details.
-/// [Formatter]: formatters/type.Formatter.html
+/// See the definition of the [Formatter](formatters/type.Formatter.html) type for the details.
 ///
 /// # Example
 ///
@@ -396,18 +391,19 @@ macro_rules! wp_separator {
 
 /// The main log entry.
 ///
-/// Prepares and emits a log record if requested log [`level`][level] is greater or equal
+/// Prepares and emits a log record if requested log [level](levels/enum.LogLevel.html) is greater or equal
 /// according to the filtering rules.
 ///
-/// If the filtering rules deduce that the log level at the current position is [`WARN`][level] then the logs for
-/// the levels [`WARN`][level] and above([`ERROR`][level] and [`CRITICAL`][level]) are emitted.
-/// The logs for the levels below [`WARN`][level] (such as [`NOTICE`][level], [`INFO`][level], etc.) are dropped.
+/// If the filtering rules deduce that the log level at the current position is
+/// [WARN](levels/enum.LogLevel.html) then the logs for
+/// the levels [WARN](levels/enum.LogLevel.html) and above([ERROR](levels/enum.LogLevel.html) and
+/// [CRITICAL](levels/enum.LogLevel.html)) are emitted.
+/// The logs for the levels below [WARN](levels/enum.LogLevel.html)
+/// (such as [NOTICE](levels/enum.LogLevel.html), [INFO](levels/enum.LogLevel.html), etc.) are dropped.
 ///
 /// It does primary filtering based on the module and file paths of the caller.
-/// [level]: levels/enum.LogLevel.html
 ///
-/// See documentation for the [`wp_get_level`][wp_get_level] more for more details on the hierarchy and filtering.
-/// [wp_get_level]: macro.wp_get_level.html
+/// See documentation for the [wp_get_level](macro.wp_get_level.html) more for more details on the hierarchy and filtering.
 #[macro_export]
 macro_rules! log {
     ($level:expr, $($arg:tt)*) => {{
@@ -430,8 +426,7 @@ macro_rules! log {
 
 /// Produces log record for the `trace` log level.
 ///
-/// See the [`log`][log] macro for the details.
-/// [log]: woodpecker/macro.log.html
+/// See the [log](macro.log.html) macro for the details.
 #[macro_export]
 macro_rules! trace {
     ($($arg:tt)*) => {
@@ -441,8 +436,7 @@ macro_rules! trace {
 
 /// Produces log record for the `debug` log level.
 ///
-/// See the [`log`][log] macro for the details.
-/// [log]: woodpecker/macro.log.html
+/// See the [log](macro.log.html) macro for the details.
 #[macro_export]
 macro_rules! debug {
     ($($arg:tt)*) => {
@@ -452,8 +446,7 @@ macro_rules! debug {
 
 /// Produces log for the `verbose` level.
 ///
-/// See the [`log`][log] macro for the details.
-/// [log]: woodpecker/macro.log.html
+/// See the [log](macro.log.html) macro for the details.
 #[macro_export]
 macro_rules! verbose {
     ($($arg:tt)*) => {
@@ -463,8 +456,7 @@ macro_rules! verbose {
 
 /// Produces log record for the `info` log level.
 ///
-/// See the [`log`][log] macro for the details.
-/// [log]: woodpecker/macro.log.html
+/// See the [log](macro.log.html) macro for the details.
 #[macro_export]
 macro_rules! info {
     ($($arg:tt)*) => {
@@ -474,8 +466,7 @@ macro_rules! info {
 
 /// Produces log record for the `notice` log level.
 ///
-/// See the [`log`][log] macro for the details.
-/// [log]: woodpecker/macro.log.html
+/// See the [log](macro.log.html) macro for the details.
 #[macro_export]
 macro_rules! notice {
     ($($arg:tt)*) => {
@@ -485,8 +476,7 @@ macro_rules! notice {
 
 /// Produces log record for the `warn` log level.
 ///
-/// See the [`log`][log] macro for the details.
-/// [log]: woodpecker/macro.log.html
+/// See the [log](macro.log.html) macro for the details.
 #[macro_export]
 macro_rules! warn {
     ($($arg:tt)*) => {
@@ -496,8 +486,7 @@ macro_rules! warn {
 
 /// Produces log record for the `error` log level.
 ///
-/// See the [`log`][log] macro for the details.
-/// [log]: woodpecker/macro.log.html
+/// See the [log](macro.log.html) macro for the details.
 #[macro_export]
 macro_rules! error {
     ($($arg:tt)*) => {
@@ -507,8 +496,7 @@ macro_rules! error {
 
 /// Produces log record for the `critical` log level.
 ///
-/// See the [`log`][log] macro for the details.
-/// [log]: woodpecker/macro.log.html
+/// See the [log](macro.log.html) macro for the details.
 #[macro_export]
 macro_rules! critical {
     ($($arg:tt)*) => {

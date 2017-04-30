@@ -72,7 +72,7 @@ In your `main.rs`:
 extern crate woodpecker;
 ```
 
-See [examples/basic.rs](examples/basic.rs) for quick overview.
+See [examples/basic.rs](https://github.com/niamster/woodpecker/blob/master/examples/basic.rs) for the quick overview.
 
 ### License
 Woodpecker project is licensed under Apache-2.0 license.

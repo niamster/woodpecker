@@ -1,6 +1,6 @@
 [package]
 name = "woodpecker"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Dmytro Milinevskyi <dmilinevskyi@gmail.com>"]
 description = "Fast and extensible logging for Rust"
 keywords = ["log", "logging", "fast", "extensible"]

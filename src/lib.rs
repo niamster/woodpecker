@@ -29,9 +29,7 @@
 //! That means that the log level for `foo::bar::qux` is deduced from the log level
 //! for `foo::bar` unless the log level for `foo::bar::qux` is explicitly set.
 //!
-//! See documentation for the [`wp_get_level`][wp_get_level] and [`log`][log] macros for more details on the hierarchy.
-//! [wp_get_level]: macro.wp_get_level.html
-//! [log]: macro.log.html
+//! See documentation for the [wp_get_level](macro.wp_get_level.html) and [log](macro.log.html) macros for more details on the hierarchy.
 //!
 //! # Installation
 //! To start using `woodpecker` it's enough to just enable it in your `Cargo.toml`:
