@@ -5,6 +5,9 @@
   </a>
   <br>
 
+  <a href="https://travis-ci.org/niamster/woodpecker">
+      <img src="https://img.shields.io/travis/niamster/woodpecker/master.svg" alt="Travis CI Build Status">
+  </a>
   <a href="https://crates.io/crates/woodpecker">
       <img src="https://img.shields.io/crates/d/woodpecker.svg" alt="woodpecker on crates.io">
   </a>

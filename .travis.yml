@@ -1,0 +1,21 @@
+language: rust
+
+cache:
+  - cargo
+
+rust:
+  - stable
+  - beta
+  - nightly
+
+matrix:
+  allow_failures:
+    - rust: nightly
+
+script:
+  - make all
+  - make bench
+
+env:
+  global:
+    - RUST_BACKTRACE=1
