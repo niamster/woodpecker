@@ -13,6 +13,7 @@ matrix:
     - rust: nightly
 
 script:
+  - cargo fmt -- --write-mode=diff
   - cargo build --all --verbose
   - cargo test --all --verbose
   - cargo doc --all --verbose

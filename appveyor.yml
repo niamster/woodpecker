@@ -69,6 +69,7 @@ cache:
   - target
 
 test_script:
+  - cargo fmt -- --write-mode=diff
   - cargo build --all --verbose %cargoflags%
   - cargo test --all --verbose %cargoflags%
   - cargo doc --all --verbose %cargoflags%
