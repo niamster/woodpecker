@@ -21,3 +21,7 @@ script:
 env:
   global:
     - RUST_BACKTRACE=1
+
+branches:
+  only:
+    - master
