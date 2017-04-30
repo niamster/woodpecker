@@ -186,7 +186,8 @@ pub fn global_set_loggers(value: bool) {
 /// Sets global log level if called without the arguments or
 /// according to the specified filter otherwise.
 ///
-/// See documentation for the [wp_get_level](macro.wp_get_level.html) more for more details on the hierarchy and filtering.
+/// See documentation for the [wp_get_level](macro.wp_get_level.html)
+/// for more details on the hierarchy and filtering.
 ///
 /// # Example
 ///
@@ -403,7 +404,8 @@ macro_rules! wp_separator {
 ///
 /// It does primary filtering based on the module and file paths of the caller.
 ///
-/// See documentation for the [wp_get_level](macro.wp_get_level.html) more for more details on the hierarchy and filtering.
+/// See documentation for the [wp_get_level](macro.wp_get_level.html)
+/// for more details on the hierarchy and filtering.
 #[macro_export]
 macro_rules! log {
     ($level:expr, $($arg:tt)*) => {{
