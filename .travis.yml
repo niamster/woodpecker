@@ -13,8 +13,10 @@ matrix:
     - rust: nightly
 
 script:
-  - make all
-  - make bench
+  - cargo build --all --verbose
+  - cargo test --all --verbose
+  - cargo doc --all --verbose
+  - cargo bench --verbose
 
 env:
   global:
