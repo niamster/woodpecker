@@ -1,2 +1,5 @@
 max_width = 120
 write_mode = "Overwrite"
+match_block_trailing_comma = true
+report_todo = "Always"
+report_fixme = "Always"
