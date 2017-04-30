@@ -72,7 +72,7 @@ In your `main.rs`:
 extern crate woodpecker;
 ```
 
-See [examples/tee.rs](examples/tee.rs) for quick overview.
+See [examples/basic.rs](examples/basic.rs) for quick overview.
 
 ### License
 Woodpecker project is licensed under Apache-2.0 license.
