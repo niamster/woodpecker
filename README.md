@@ -1,26 +1,12 @@
-<p align="center">
+# ![Woodpecker](https://cdn.rawgit.com/niamster/woodpecker/master/logo/woodpecker.png)
 
-  <a href="https://github.com/niamster/woodpecker">
-  <img src="https://cdn.rawgit.com/niamster/woodpecker/master/logo/woodpecker.png" alt="woodpecker logo">
-  </a>
-  <br>
+[![Crates.io](https://img.shields.io/crates/v/woodpecker.svg)](https://crates.io/crates/woodpecker)
+[![Docs.rs](https://docs.rs/woodpecker/badge.svg)](https://docs.rs/woodpecker)
+[![Linux Build Status](https://travis-ci.org/niamster/woodpecker.svg?branch=master)](https://travis-ci.org/niamster/woodpecker)
+[![Windows Build Status](https://ci.appveyor.com/api/projects/status/ljd6pkh8fsx7oh7a/branch/master?svg=true)](https://ci.appveyor.com/project/niamster/woodpecker)
+[![License](https://img.shields.io/crates/l/woodpecker.svg)](https://opensource.org/licenses/Apache-2.0)
 
-  <a href="https://travis-ci.org/niamster/woodpecker">
-      <img src="https://img.shields.io/travis/niamster/woodpecker/master.svg" alt="Travis CI Build Status">
-  </a>
-  <a href="https://ci.appveyor.com/project/niamster/woodpecker">
-      <img src="https://ci.appveyor.com/api/projects/status/ljd6pkh8fsx7oh7a/branch/master?svg=true" alt="Appveyor CI Build Status">
-  </a>
-  <a href="https://crates.io/crates/woodpecker">
-      <img src="https://img.shields.io/crates/d/woodpecker.svg" alt="woodpecker on crates.io">
-  </a>
-  <a href="https://docs.rs/woodpecker">
-      <img src="https://docs.rs/woodpecker/badge.svg" alt="docs-rs: woodpecker documentation">
-  </a>
-</p>
-
-
-# woodpecker - Logging for [Rust][rust]
+# Woodpecker - Logging for [Rust][rust]
 
 ### Table of Contents
 
