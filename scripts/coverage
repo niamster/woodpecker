@@ -20,6 +20,7 @@ EXE=$(find target/debug -type f -executable -name "${PROJECT}-*" -printf '%p\n' 
 [ -z "$EXE" ] && die "Failed to find test file"
 
 rm -rf $OUTPUT
+mkdir -p $OUTPUT
 ${kcov} --exclude-pattern=.cargo,/usr/lib --verify $OUTPUT $EXE || exit 1
 
 echo "Check out the coverage via file://$(pwd)/${OUTPUT}/index.html"
