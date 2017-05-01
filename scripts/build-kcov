@@ -1,0 +1,27 @@
+#!/bin/sh
+
+RELEASE=33
+INST=${HOME}/apps/kcov
+
+die() {
+    echo $*
+    exit 1
+}
+
+[ -e ${INST}/bin/kcov ] && {
+    echo "kcov is already installed at $INST"
+    exit 0
+}
+
+OUT=/tmp/kcov-${RELEASE}
+ARC=tar.gz
+
+rm -rf $OUT ${OUT}.${ARC} $INST
+
+wget -O ${OUT}.${ARC} https://github.com/SimonKagstrom/kcov/archive/v${RELEASE}.${ARC} || die "Failed to download"
+tar -C $(dirname ${OUT}) -xf ${OUT}.${ARC} || die "Failed to unpack"
+mkdir ${OUT}/build
+cd ${OUT}/build
+cmake -DCMAKE_INSTALL_PREFIX=$INST .. || die
+make || die
+make install || die

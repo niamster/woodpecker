@@ -1,0 +1,25 @@
+#!/bin/sh
+
+PROJECT=woodpecker
+OUTPUT=target/cov/${PROJECT}
+
+die() {
+    echo $*
+    exit 1
+}
+
+kcov=${HOME}/apps/kcov/bin/kcov
+if [ ! -e $kcov ]; then
+    kcov=kcov
+fi
+
+${kcov} --version >/dev/null 2>&1 || die "kcov is not installed"
+
+cargo test --no-run || die
+EXE=$(find target/debug -type f -executable -name "${PROJECT}-*" -printf '%p\n' | sort -r | head -n 1)
+[ -z "$EXE" ] && die "Failed to find test file"
+
+rm -rf $OUTPUT
+${kcov} --exclude-pattern=.cargo,/usr/lib --verify $OUTPUT $EXE || exit 1
+
+echo "Check out the coverage via file://$(pwd)/${OUTPUT}/index.html"
