@@ -7,11 +7,13 @@ addons:
       - libcurl4-openssl-dev
       - libelf-dev
       - libdw-dev
+      - cmake
+      - gcc
       - binutils-dev # required for the --verify flag of kcov
 
 before_script:
-  - pip install 'travis-cargo<0.2' --user
-  - export PATH=$HOME/.local/bin:$PATH
+  - ./scripts/build-kcov
+  - export PATH=$HOME/kcov/bin:$PATH
 
 cache:
   - cargo
@@ -26,13 +28,15 @@ matrix:
     - rust: nightly
 
 script:
-  - travis-cargo build
-  - travis-cargo test
-  - travis-cargo doc
-  - travis-cargo bench
+  - cargo build --all --verbose
+  - cargo test --all --verbose
+  - cargo doc --all --verbose
+  - cargo bench --verbose
 
 after_success:
-  - travis-cargo coveralls --no-sudo --verify
+  - scripts/build-kcov
+  - scripts/coverage
+  - bash <(curl -s https://codecov.io/bash) && echo "Uploaded code coverage"
 
 env:
   global:
