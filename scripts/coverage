@@ -21,6 +21,10 @@ EXE=$(find target/debug -type f -executable -name "${PROJECT}-*" -printf '%p\n' 
 
 rm -rf $OUTPUT
 mkdir -p $OUTPUT
-${kcov} --exclude-pattern=.cargo,/usr/lib --verify $OUTPUT $EXE || exit 1
+
+coveralls=
+[ -n "$TRAVIS_JOB_ID" ] && coveralls="--coveralls-id=${TRAVIS_JOB_ID}"
+
+${kcov} $coveralls --exclude-pattern=.cargo,/usr/lib --verify $OUTPUT $EXE || exit 1
 
 echo "Check out the coverage via file://$(pwd)/${OUTPUT}/index.html"

@@ -4,6 +4,8 @@
 [![Docs.rs](https://docs.rs/woodpecker/badge.svg)](https://docs.rs/woodpecker)
 [![Linux Build Status](https://travis-ci.org/niamster/woodpecker.svg?branch=master)](https://travis-ci.org/niamster/woodpecker)
 [![Windows Build Status](https://ci.appveyor.com/api/projects/status/ljd6pkh8fsx7oh7a/branch/master?svg=true)](https://ci.appveyor.com/project/niamster/woodpecker)
+[![Codecov](https://codecov.io/gh/niamster/woodpecker/branch/master/graph/badge.svg)](https://codecov.io/gh/niamster/woodpecker)
+[![Coveralls](https://coveralls.io/repos/github/niamster/woodpecker/badge.svg?branch=master)](https://coveralls.io/github/niamster/woodpecker?branch=master)
 [![License](https://img.shields.io/crates/l/woodpecker.svg)](https://opensource.org/licenses/Apache-2.0)
 
 # Woodpecker - Logging for [Rust][rust]
