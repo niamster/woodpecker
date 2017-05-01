@@ -1,4 +1,17 @@
+sudo: false
 language: rust
+
+addons:
+  apt:
+    packages:
+      - libcurl4-openssl-dev
+      - libelf-dev
+      - libdw-dev
+      - binutils-dev # required for the --verify flag of kcov
+
+before_script:
+  - pip install 'travis-cargo<0.2' --user
+  - export PATH=$HOME/.local/bin:$PATH
 
 cache:
   - cargo
@@ -13,10 +26,13 @@ matrix:
     - rust: nightly
 
 script:
-  - cargo build --all --verbose
-  - cargo test --all --verbose
-  - cargo doc --all --verbose
-  - cargo bench --verbose
+  - travis-cargo build
+  - travis-cargo test
+  - travis-cargo doc
+  - travis-cargo bench
+
+after_success:
+  - travis-cargo coveralls --no-sudo --verify
 
 env:
   global:
