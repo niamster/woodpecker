@@ -241,10 +241,11 @@ macro_rules! wp_set_level {
 /// according to the specified filter string otherwise.
 ///
 /// The filtering rules are hierarchical.
-/// It means that if for example there's a rule that states that the module `foo::bar`
+///
+/// It means that if, for example, there's a rule that states that the module `foo::bar`
 /// has log level `WARN`, then all submodules inherit this log level.
 /// At the same time another rule may override the inherited level.
-/// For example `foo::bar::qux@xyz.rs` has log level `DEBUG`.
+/// For example, `foo::bar::qux@xyz.rs` has log level `DEBUG`.
 ///
 /// # Example
 ///
@@ -402,25 +403,103 @@ macro_rules! wp_separator {
     () => ("@")
 }
 
+/// Returns the log level according to the position and filtering rules.
+///
+/// Unlike [wp_get_level](macro.wp_get_level.html) it applies all filtering rules
+/// according to the position where it is called.
+///
+/// # Example
+///
+/// ```rust
+/// #[macro_use]
+/// extern crate woodpecker;
+/// use woodpecker as wp;
+///
+/// fn main() {
+///     wp::init();
+///
+///     wp_set_level!(wp::LogLevel::INFO);
+///
+///     wp_set_level!(module_path!(), wp::LogLevel::CRITICAL);
+///     assert_eq!(log_level!(), wp::LogLevel::CRITICAL);
+///
+///     wp_set_level!(this_file!(), wp::LogLevel::DEBUG);
+///     assert_eq!(log_level!(), wp::LogLevel::DEBUG);
+///
+///     assert_eq!(wp_get_level!(), wp::LogLevel::INFO);
+///     assert_eq!(wp_get_level!(module_path!()), wp::LogLevel::CRITICAL);
+///     assert_eq!(wp_get_level!(this_file!()), wp::LogLevel::DEBUG);
+/// }
+///
+/// ```
+#[macro_export]
+macro_rules! log_level {
+    () => {{
+        if $crate::logger::global_has_loggers() {
+            let path = this_file!();
+            let root = $crate::logger::root();
+            let root = root.read();
+            root.get_level(path)
+        } else {
+            $crate::logger::global_get_level()
+        }
+    }};
+}
+
 /// The main log entry.
 ///
 /// Prepares and emits a log record if requested log [level](levels/enum.LogLevel.html) is greater or equal
 /// according to the filtering rules.
 ///
-/// If the filtering rules deduce that the log level at the current position is
+/// If log level is not specified then the log is emitted unconditionally.
+/// Otherwise, log level is analyzed according to the filtering rules.
+///
+/// If, for example, the filtering rules deduce that the log level at the current position is
 /// [WARN](levels/enum.LogLevel.html) then the logs for
 /// the levels [WARN](levels/enum.LogLevel.html) and above([ERROR](levels/enum.LogLevel.html) and
 /// [CRITICAL](levels/enum.LogLevel.html)) are emitted.
 /// The logs for the levels below [WARN](levels/enum.LogLevel.html)
 /// (such as [NOTICE](levels/enum.LogLevel.html), [INFO](levels/enum.LogLevel.html), etc.) are dropped.
 ///
-/// It does primary filtering based on the module and file paths of the caller.
-///
 /// See documentation for the [wp_get_level](macro.wp_get_level.html)
 /// for more details on the hierarchy and filtering.
+///
+/// # Example
+///
+/// ```rust
+/// #[macro_use]
+/// extern crate woodpecker;
+/// use woodpecker as wp;
+///
+/// use std::sync::{Arc, Mutex};
+/// use std::ops::Deref;
+///
+/// fn main() {
+///     let msg = "I'm always visible";
+///
+///     wp::init();
+///
+///     wp_set_level!(wp::LogLevel::CRITICAL);
+///     let out = Arc::new(Mutex::new(String::new()));
+///     {
+///         let out = out.clone();
+///         wp_register_handler!(Box::new(move |record| {
+///             out.lock().unwrap().push_str(record.msg().deref());
+///         }));
+///
+///         log!(">{}<", msg);
+///         warn!("foo");
+///         in_trace!({
+///             log!("Not seen though");
+///         });
+///     }
+///     assert_eq!(*out.lock().unwrap(), format!(">{}<", msg));
+/// }
+///
+/// ```
 #[macro_export]
 macro_rules! log {
-    ($level:expr, $($arg:tt)*) => {{
+    ($level:expr => $($arg:tt)*) => {{
         if $crate::logger::global_has_loggers() {
             let path = this_file!();
             let root = $crate::logger::root();
@@ -436,6 +515,12 @@ macro_rules! log {
             }
         }
     }};
+
+    ($($arg:tt)*) => {{
+        let root = $crate::logger::root();
+        let root = root.read();
+        root.log($crate::LogLevel::LOG, module_path!(), file!(), line!(), format_args!($($arg)*));
+    }};
 }
 
 /// Produces log record for the `trace` log level.
@@ -444,8 +529,20 @@ macro_rules! log {
 #[macro_export]
 macro_rules! trace {
     ($($arg:tt)*) => {
-        log!($crate::LogLevel::TRACE, $($arg)*);
+        log!($crate::LogLevel::TRACE => $($arg)*);
     };
+}
+
+/// Executes the code only for the `trace` log level.
+///
+/// See the [log](macro.log.html) macro for the details.
+#[macro_export]
+macro_rules! in_trace {
+    ($block:block) => {
+        if log_level!() <= $crate::LogLevel::TRACE {
+            $block;
+        }
+    }
 }
 
 /// Produces log record for the `debug` log level.
@@ -454,8 +551,20 @@ macro_rules! trace {
 #[macro_export]
 macro_rules! debug {
     ($($arg:tt)*) => {
-        log!($crate::LogLevel::DEBUG, $($arg)*);
+        log!($crate::LogLevel::DEBUG  => $($arg)*);
     };
+}
+
+/// Executes the code only for the `debug` log level.
+///
+/// See the [log](macro.log.html) macro for the details.
+#[macro_export]
+macro_rules! in_debug {
+    ($block:block) => {
+        if log_level!() <= $crate::LogLevel::DEBUG {
+            $block;
+        }
+    }
 }
 
 /// Produces log for the `verbose` level.
@@ -464,8 +573,20 @@ macro_rules! debug {
 #[macro_export]
 macro_rules! verbose {
     ($($arg:tt)*) => {
-        log!($crate::LogLevel::VERBOSE, $($arg)*);
+        log!($crate::LogLevel::VERBOSE => $($arg)*);
     };
+}
+
+/// Executes the code only for the `verbose` log level.
+///
+/// See the [log](macro.log.html) macro for the details.
+#[macro_export]
+macro_rules! in_verbose {
+    ($block:block) => {
+        if log_level!() <= $crate::LogLevel::VERBOSE {
+            $block;
+        }
+    }
 }
 
 /// Produces log record for the `info` log level.
@@ -474,8 +595,20 @@ macro_rules! verbose {
 #[macro_export]
 macro_rules! info {
     ($($arg:tt)*) => {
-        log!($crate::LogLevel::INFO, $($arg)*);
+        log!($crate::LogLevel::INFO => $($arg)*);
     };
+}
+
+/// Executes the code only for the `info` log level.
+///
+/// See the [log](macro.log.html) macro for the details.
+#[macro_export]
+macro_rules! in_info {
+    ($block:block) => {
+        if log_level!() <= $crate::LogLevel::INFO {
+            $block;
+        }
+    }
 }
 
 /// Produces log record for the `notice` log level.
@@ -484,8 +617,20 @@ macro_rules! info {
 #[macro_export]
 macro_rules! notice {
     ($($arg:tt)*) => {
-        log!($crate::LogLevel::NOTICE, $($arg)*);
+        log!($crate::LogLevel::NOTICE => $($arg)*);
     };
+}
+
+/// Executes the code only for the `notice` log level.
+///
+/// See the [log](macro.log.html) macro for the details.
+#[macro_export]
+macro_rules! in_notice {
+    ($block:block) => {
+        if log_level!() <= $crate::LogLevel::NOTICE {
+            $block;
+        }
+    }
 }
 
 /// Produces log record for the `warn` log level.
@@ -494,8 +639,20 @@ macro_rules! notice {
 #[macro_export]
 macro_rules! warn {
     ($($arg:tt)*) => {
-        log!($crate::LogLevel::WARN, $($arg)*);
+        log!($crate::LogLevel::WARN => $($arg)*);
     };
+}
+
+/// Executes the code only for the `warn` log level.
+///
+/// See the [log](macro.log.html) macro for the details.
+#[macro_export]
+macro_rules! in_warn {
+    ($block:block) => {
+        if log_level!() <= $crate::LogLevel::WARN {
+            $block;
+        }
+    }
 }
 
 /// Produces log record for the `error` log level.
@@ -504,8 +661,20 @@ macro_rules! warn {
 #[macro_export]
 macro_rules! error {
     ($($arg:tt)*) => {
-        log!($crate::LogLevel::ERROR, $($arg)*);
+        log!($crate::LogLevel::ERROR => $($arg)*);
     };
+}
+
+/// Executes the code only for the `error` log level.
+///
+/// See the [log](macro.log.html) macro for the details.
+#[macro_export]
+macro_rules! in_error {
+    ($block:block) => {
+        if log_level!() <= $crate::LogLevel::ERROR {
+            $block;
+        }
+    }
 }
 
 /// Produces log record for the `critical` log level.
@@ -514,8 +683,20 @@ macro_rules! error {
 #[macro_export]
 macro_rules! critical {
     ($($arg:tt)*) => {
-        log!($crate::LogLevel::CRITICAL, $($arg)*);
+        log!($crate::LogLevel::CRITICAL => $($arg)*);
     };
+}
+
+/// Executes the code only for the `critical` log level.
+///
+/// See the [log](macro.log.html) macro for the details.
+#[macro_export]
+macro_rules! in_critical {
+    ($block:block) => {
+        if log_level!() <= $crate::LogLevel::CRITICAL {
+            $block;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -621,11 +802,12 @@ mod tests {
             for l in LEVELS.iter() {
                 wp_set_level!(*l);
                 assert_eq!(*l, wp_get_level!());
+                assert_eq!(*l, log_level!());
 
                 for l in LEVELS.iter() {
-                    log!(*l, "msg");
+                    log!(*l => "msg");
                     let mut output = buf.lock().unwrap();
-                    if *l >= wp_get_level!() {
+                    if *l >= log_level!() {
                         assert!(output.as_str().contains("msg"));
                         assert!(output.as_str().contains(&l.to_string()));
                     } else {
@@ -633,6 +815,16 @@ mod tests {
                     }
                     output.clear();
                 }
+            }
+
+            for l in LEVELS.iter() {
+                wp_set_level!(*l);
+                assert_eq!(*l, log_level!());
+
+                log!(">>{}<<", "unconditional");
+                let mut output = buf.lock().unwrap();
+                assert!(output.as_str().contains(">>unconditional<<"));
+                output.clear();
             }
 
             wp_set_formatter!(Box::new(|record| {
@@ -649,6 +841,7 @@ mod tests {
             assert_eq!(wp_get_level!(), LogLevel::WARN);
             assert_eq!(wp_get_level!("foo"), LogLevel::WARN);
             assert_eq!(wp_get_level!(logger), LogLevel::VERBOSE);
+            assert_eq!(log_level!(), LogLevel::VERBOSE);
 
             {
                 let mut output = buf.lock().unwrap();
@@ -661,16 +854,19 @@ mod tests {
             }
 
             wp_set_level!(LogLevel::CRITICAL);
+            assert_eq!(log_level!(), LogLevel::CRITICAL);
 
             let logger = this_module!();
             wp_set_level!(logger, LogLevel::ERROR);
             assert_eq!(wp_get_level!(), LogLevel::CRITICAL);
             assert_eq!(wp_get_level!(logger), LogLevel::ERROR);
+            assert_eq!(log_level!(), LogLevel::ERROR);
 
             let logger = this_file!();
             wp_set_level!(logger, LogLevel::NOTICE);
             assert_eq!(wp_get_level!(), LogLevel::CRITICAL);
             assert_eq!(wp_get_level!(logger), LogLevel::NOTICE);
+            assert_eq!(log_level!(), LogLevel::NOTICE);
 
             {
                 let mut output = buf.lock().unwrap();
@@ -681,6 +877,26 @@ mod tests {
                 let output = buf.lock().unwrap();
                 assert_eq!(output.as_str(), "NOTICE:msg");
             }
+        });
+    }
+
+    #[test]
+    fn test_logger_in_log() {
+        run_test(|buf| {
+            wp_set_level!(LogLevel::WARN);
+            wp_set_formatter!(Box::new(|record| {
+                (*record.msg()).clone()
+            }));
+
+            in_debug!({
+                log!("hidden");
+            });
+            in_warn!({
+                log!("visible");
+            });
+
+            let output = buf.lock().unwrap();
+            assert_eq!(output.as_str(), "visible");
         });
     }
 

@@ -33,6 +33,8 @@ pub enum LogLevel {
     ERROR,
     /// Log only critical messages.
     CRITICAL,
+    /// Used for unconditional logging.
+    LOG,
 }
 
 impl From<LogLevel> for isize {
@@ -46,6 +48,7 @@ impl From<LogLevel> for isize {
             LogLevel::WARN => 20,
             LogLevel::ERROR => 30,
             LogLevel::CRITICAL => 40,
+            LogLevel::LOG => 50,
         }
     }
 }
@@ -62,11 +65,13 @@ impl From<isize> for LogLevel {
             20  => LogLevel::WARN,
             30  => LogLevel::ERROR,
             40  => LogLevel::CRITICAL,
+            50  => LogLevel::LOG,
             _   => panic!("Unsupported log level {}", orig),
         }
     }
 }
 
+// NOTE: `LOG` level should not be included here
 #[doc(hidden)]
 pub const LEVELS: [LogLevel; 8] = [
     LogLevel::TRACE,
@@ -91,6 +96,7 @@ impl fmt::Display for LogLevel {
             &LogLevel::WARN => write!(f, "WARN"),
             &LogLevel::ERROR => write!(f, "ERROR"),
             &LogLevel::CRITICAL => write!(f, "CRITICAL"),
+            &LogLevel::LOG => write!(f, "LOG"),
         }
     }
 }
