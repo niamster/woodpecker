@@ -20,7 +20,8 @@ extern crate time;
 use std::mem;
 use std::sync::{Arc, Once, ONCE_INIT};
 use std::sync::atomic::{AtomicIsize, AtomicBool, Ordering, ATOMIC_ISIZE_INIT, ATOMIC_BOOL_INIT};
-use std::collections::LinkedList;
+use std::collections::{LinkedList, BTreeMap};
+use std::collections::Bound::{Included, Excluded, Unbounded};
 use std::fmt;
 
 use levels::LogLevel;
@@ -34,7 +35,7 @@ static IS_INIT: AtomicBool = ATOMIC_BOOL_INIT;
 
 #[doc(hidden)]
 pub struct RootLogger<'a> {
-    loggers: Vec<(String, LogLevel)>,
+    loggers: BTreeMap<String, LogLevel>,
     formatter: Formatter<'a>,
     handlers: LinkedList<Handler<'a>>,
 }
@@ -43,7 +44,7 @@ impl<'a> RootLogger<'a> {
     #[doc(hidden)]
     pub fn new() -> Self {
         RootLogger {
-            loggers: Vec::new(),
+            loggers: BTreeMap::new(),
             formatter: Box::new(::formatters::default::formatter),
             handlers: LinkedList::new(),
         }
@@ -64,37 +65,39 @@ impl<'a> RootLogger<'a> {
         self.formatter = formatter;
     }
 
+    fn remove_children(&mut self, path: &str) {
+        let mut trash = LinkedList::new();
+        {
+            let range = self.loggers.range::<str, _>((Excluded(path), Unbounded));
+            for (name, _) in range {
+                if !name.starts_with(path) {
+                    break;
+                }
+                trash.push_front(name.to_string());
+            }
+        }
+        for item in trash {
+            self.loggers.remove(item.as_str());
+        }
+    }
+
     #[doc(hidden)]
     pub fn set_level(&mut self, path: &str, level: LogLevel) {
-        self.loggers.retain(|&(ref name, _)| !(name.len() > path.len() && name.starts_with(path)));
-        match self.loggers.binary_search_by(|&(ref k, _)| path.cmp(&k)) {
-            Ok(pos) => {
-                let (_, ref mut olevel) = self.loggers[pos];
-                *olevel = level;
-            },
-            Err(pos) => {
-                self.loggers.insert(pos, (path.to_string(), level));
-            },
-        };
+        self.remove_children(path);
+        self.loggers.insert(path.to_string(), level);
     }
 
     #[doc(hidden)]
     #[inline(always)]
     pub fn get_level(&self, path: &str) -> LogLevel {
-        match self.loggers.binary_search_by(|&(ref k, _)| path.cmp(&k)) {
-            Ok(pos) => {
-                let &(_, level) = &self.loggers[pos];
-                level
-            },
-            Err(pos) => {
-                let &(ref name, level) = &self.loggers[if pos > 0 { pos - 1 } else { pos }];
-                if path.starts_with(name) {
-                    level
-                } else {
-                    global_get_level()
-                }
-            },
+        let range = self.loggers.range::<str, _>((Unbounded, Included(path)));
+        for (name, level) in range.rev() {
+            if path.starts_with(name) {
+                return *level;
+            }
         }
+
+        global_get_level()
     }
 
     #[doc(hidden)]
