@@ -56,6 +56,11 @@ impl<'a> RootLogger<'a> {
     }
 
     #[doc(hidden)]
+    pub fn reset_loggers(&mut self) {
+        self.loggers.clear()
+    }
+
+    #[doc(hidden)]
     pub fn handler(&mut self, handler: Handler<'a>) {
         self.handlers.push_front(handler);
     }
@@ -222,6 +227,10 @@ macro_rules! wp_set_level {
         $crate::logger::global_set_loggers(true);
     }};
     ($level:expr) => {{
+        $crate::logger::global_set_loggers(false);
+        let root = $crate::logger::root();
+        let mut root = root.write();
+        root.reset_loggers();
         $crate::logger::global_set_level($level);
     }};
 }
