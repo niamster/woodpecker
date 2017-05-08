@@ -192,10 +192,10 @@ pub fn global_set_loggers(value: bool) {
 /// Sets the log level.
 ///
 /// Sets global log level if called without the arguments or
-/// according to the specified filter otherwise.
+/// according to the specified path otherwise.
 ///
 /// See documentation for the [wp_get_level](macro.wp_get_level.html)
-/// for more details on the hierarchy and filtering.
+/// for more details on the log level hierarchy.
 ///
 /// # Example
 ///
@@ -212,7 +212,7 @@ pub fn global_set_loggers(value: bool) {
 ///     wp_set_level!(wp::LogLevel::INFO);
 ///     wp_set_level!(logger, wp::LogLevel::CRITICAL);
 ///
-///     assert_eq!(wp_get_level!(), wp::LogLevel::INFO);
+///     assert_eq!(wp_get_level!(^), wp::LogLevel::INFO);
 ///     assert_eq!(wp_get_level!(logger), wp::LogLevel::CRITICAL);
 /// }
 ///
@@ -237,15 +237,21 @@ macro_rules! wp_set_level {
 
 /// Gets the log level.
 ///
-/// Returns global log level if called without the arguments or
-/// according to the specified filter string otherwise.
+/// Returns global log level if called with `^` as an argument.
 ///
-/// The filtering rules are hierarchical.
+/// Returns log level according to the position (current path)
+/// if called without any argument.
+///
+/// Returns log level for the requested path when it's passed as an argument.
+///
+/// The log levels are hierarchical.
 ///
 /// It means that if, for example, there's a rule that states that the module `foo::bar`
 /// has log level `WARN`, then all submodules inherit this log level.
 /// At the same time another rule may override the inherited level.
 /// For example, `foo::bar::qux@xyz.rs` has log level `DEBUG`.
+///
+/// If there's no exact match the rules of the parent are applied.
 ///
 /// # Example
 ///
@@ -259,25 +265,45 @@ macro_rules! wp_set_level {
 ///
 ///     let logger = "foo::bar";
 ///
-///     assert_eq!(wp_get_level!(), wp::LogLevel::WARN);
+///     assert_eq!(wp_get_level!(^), wp::LogLevel::WARN);
 ///     assert_eq!(wp_get_level!(logger), wp::LogLevel::WARN);
 ///
 ///     wp_set_level!(wp::LogLevel::INFO);
 ///     wp_set_level!(logger, wp::LogLevel::CRITICAL);
 ///
-///     assert_eq!(wp_get_level!(), wp::LogLevel::INFO);
+///     assert_eq!(wp_get_level!(^), wp::LogLevel::INFO);
 ///     assert_eq!(wp_get_level!(logger), wp::LogLevel::CRITICAL);
 ///
 ///     // Since the logs follow the hierarchy following statements are valid.
 ///     assert_eq!(wp_get_level!("foo::bar::qux"), wp::LogLevel::CRITICAL);
 ///     assert_eq!(wp_get_level!("foo"), wp::LogLevel::INFO);
+///
+///     wp_set_level!(module_path!(), wp::LogLevel::CRITICAL);
+///     assert_eq!(wp_get_level!(), wp::LogLevel::CRITICAL);
+///
+///     wp_set_level!(this_file!(), wp::LogLevel::DEBUG);
+///     assert_eq!(wp_get_level!(), wp::LogLevel::DEBUG);
+///
+///     assert_eq!(wp_get_level!(^), wp::LogLevel::INFO);
+///     assert_eq!(wp_get_level!(module_path!()), wp::LogLevel::CRITICAL);
+///     assert_eq!(wp_get_level!(this_file!()), wp::LogLevel::DEBUG);
 /// }
 ///
 /// ```
 #[macro_export]
 macro_rules! wp_get_level {
-    () => {{
+    (^) => {{
         $crate::logger::global_get_level()
+    }};
+    () => {{
+        if $crate::logger::global_has_loggers() {
+            let path = this_file!();
+            let root = $crate::logger::root();
+            let root = root.read();
+            root.get_level(path)
+        } else {
+            $crate::logger::global_get_level()
+        }
     }};
     ($logger:expr) => {{
         __wp_logger_is_string!($logger);
@@ -397,64 +423,20 @@ macro_rules! wp_set_formatter {
 
 /// A file-module separator.
 ///
-/// This separator is used to separate module and file paths in the filter string.
+/// This separator is used to join module and file paths.
 #[macro_export]
 macro_rules! wp_separator {
     () => ("@")
 }
 
-/// Returns the log level according to the position and filtering rules.
-///
-/// Unlike [wp_get_level](macro.wp_get_level.html) it applies all filtering rules
-/// according to the position where it is called.
-///
-/// # Example
-///
-/// ```rust
-/// #[macro_use]
-/// extern crate woodpecker;
-/// use woodpecker as wp;
-///
-/// fn main() {
-///     wp::init();
-///
-///     wp_set_level!(wp::LogLevel::INFO);
-///
-///     wp_set_level!(module_path!(), wp::LogLevel::CRITICAL);
-///     assert_eq!(log_level!(), wp::LogLevel::CRITICAL);
-///
-///     wp_set_level!(this_file!(), wp::LogLevel::DEBUG);
-///     assert_eq!(log_level!(), wp::LogLevel::DEBUG);
-///
-///     assert_eq!(wp_get_level!(), wp::LogLevel::INFO);
-///     assert_eq!(wp_get_level!(module_path!()), wp::LogLevel::CRITICAL);
-///     assert_eq!(wp_get_level!(this_file!()), wp::LogLevel::DEBUG);
-/// }
-///
-/// ```
-#[macro_export]
-macro_rules! log_level {
-    () => {{
-        if $crate::logger::global_has_loggers() {
-            let path = this_file!();
-            let root = $crate::logger::root();
-            let root = root.read();
-            root.get_level(path)
-        } else {
-            $crate::logger::global_get_level()
-        }
-    }};
-}
-
 /// The main log entry.
 ///
 /// Prepares and emits a log record if requested log [level](levels/enum.LogLevel.html) is greater or equal
-/// according to the filtering rules.
+/// according to the log level.
 ///
 /// If log level is not specified then the log is emitted unconditionally.
-/// Otherwise, log level is analyzed according to the filtering rules.
 ///
-/// If, for example, the filtering rules deduce that the log level at the current position is
+/// If, for example, the hierarchy rules deduce that the log level at the current position is
 /// [WARN](levels/enum.LogLevel.html) then the logs for
 /// the levels [WARN](levels/enum.LogLevel.html) and above([ERROR](levels/enum.LogLevel.html) and
 /// [CRITICAL](levels/enum.LogLevel.html)) are emitted.
@@ -462,7 +444,7 @@ macro_rules! log_level {
 /// (such as [NOTICE](levels/enum.LogLevel.html), [INFO](levels/enum.LogLevel.html), etc.) are dropped.
 ///
 /// See documentation for the [wp_get_level](macro.wp_get_level.html)
-/// for more details on the hierarchy and filtering.
+/// for more details on the log level hierarchy.
 ///
 /// # Example
 ///
@@ -539,7 +521,7 @@ macro_rules! trace {
 #[macro_export]
 macro_rules! in_trace {
     ($block:block) => {
-        if log_level!() <= $crate::LogLevel::TRACE {
+        if wp_get_level!() <= $crate::LogLevel::TRACE {
             $block;
         }
     }
@@ -561,7 +543,7 @@ macro_rules! debug {
 #[macro_export]
 macro_rules! in_debug {
     ($block:block) => {
-        if log_level!() <= $crate::LogLevel::DEBUG {
+        if wp_get_level!() <= $crate::LogLevel::DEBUG {
             $block;
         }
     }
@@ -583,7 +565,7 @@ macro_rules! verbose {
 #[macro_export]
 macro_rules! in_verbose {
     ($block:block) => {
-        if log_level!() <= $crate::LogLevel::VERBOSE {
+        if wp_get_level!() <= $crate::LogLevel::VERBOSE {
             $block;
         }
     }
@@ -605,7 +587,7 @@ macro_rules! info {
 #[macro_export]
 macro_rules! in_info {
     ($block:block) => {
-        if log_level!() <= $crate::LogLevel::INFO {
+        if wp_get_level!() <= $crate::LogLevel::INFO {
             $block;
         }
     }
@@ -627,7 +609,7 @@ macro_rules! notice {
 #[macro_export]
 macro_rules! in_notice {
     ($block:block) => {
-        if log_level!() <= $crate::LogLevel::NOTICE {
+        if wp_get_level!() <= $crate::LogLevel::NOTICE {
             $block;
         }
     }
@@ -649,7 +631,7 @@ macro_rules! warn {
 #[macro_export]
 macro_rules! in_warn {
     ($block:block) => {
-        if log_level!() <= $crate::LogLevel::WARN {
+        if wp_get_level!() <= $crate::LogLevel::WARN {
             $block;
         }
     }
@@ -671,7 +653,7 @@ macro_rules! error {
 #[macro_export]
 macro_rules! in_error {
     ($block:block) => {
-        if log_level!() <= $crate::LogLevel::ERROR {
+        if wp_get_level!() <= $crate::LogLevel::ERROR {
             $block;
         }
     }
@@ -693,7 +675,7 @@ macro_rules! critical {
 #[macro_export]
 macro_rules! in_critical {
     ($block:block) => {
-        if log_level!() <= $crate::LogLevel::CRITICAL {
+        if wp_get_level!() <= $crate::LogLevel::CRITICAL {
             $block;
         }
     }
@@ -756,11 +738,11 @@ mod tests {
     fn test_logger_default() {
         run_test(|_| {
             // Default level is WARN
-            assert_eq!(wp_get_level!(), LogLevel::WARN);
+            assert_eq!(wp_get_level!(^), LogLevel::WARN);
             assert_eq!(wp_get_level!("foo"), LogLevel::WARN);
 
             wp_set_level!(LogLevel::INFO);
-            assert_eq!(wp_get_level!(), LogLevel::INFO);
+            assert_eq!(wp_get_level!(^), LogLevel::INFO);
             assert_eq!(wp_get_level!("foo"), LogLevel::INFO);
         });
     }
@@ -770,7 +752,7 @@ mod tests {
         run_test(|_| {
             wp_set_level!("foo::bar::qux", LogLevel::CRITICAL);
 
-            assert_eq!(wp_get_level!(), LogLevel::WARN);
+            assert_eq!(wp_get_level!(^), LogLevel::WARN);
             assert_eq!(wp_get_level!("foo::bar::qux::xyz"), LogLevel::CRITICAL);
             assert_eq!(wp_get_level!("foo::bar::qux"), LogLevel::CRITICAL);
             assert_eq!(wp_get_level!("foo::bar"), LogLevel::WARN);
@@ -801,13 +783,13 @@ mod tests {
         run_test(|buf| {
             for l in LEVELS.iter() {
                 wp_set_level!(*l);
+                assert_eq!(*l, wp_get_level!(^));
                 assert_eq!(*l, wp_get_level!());
-                assert_eq!(*l, log_level!());
 
                 for l in LEVELS.iter() {
                     log!(*l => "msg");
                     let mut output = buf.lock().unwrap();
-                    if *l >= log_level!() {
+                    if *l >= wp_get_level!() {
                         assert!(output.as_str().contains("msg"));
                         assert!(output.as_str().contains(&l.to_string()));
                     } else {
@@ -819,7 +801,7 @@ mod tests {
 
             for l in LEVELS.iter() {
                 wp_set_level!(*l);
-                assert_eq!(*l, log_level!());
+                assert_eq!(*l, wp_get_level!());
 
                 log!(">>{}<<", "unconditional");
                 let mut output = buf.lock().unwrap();
@@ -838,10 +820,10 @@ mod tests {
             let logger = "woodpecker";
             wp_set_level!(LogLevel::WARN);
             wp_set_level!(logger, LogLevel::VERBOSE);
-            assert_eq!(wp_get_level!(), LogLevel::WARN);
+            assert_eq!(wp_get_level!(^), LogLevel::WARN);
             assert_eq!(wp_get_level!("foo"), LogLevel::WARN);
             assert_eq!(wp_get_level!(logger), LogLevel::VERBOSE);
-            assert_eq!(log_level!(), LogLevel::VERBOSE);
+            assert_eq!(wp_get_level!(), LogLevel::VERBOSE);
 
             {
                 let mut output = buf.lock().unwrap();
@@ -854,19 +836,19 @@ mod tests {
             }
 
             wp_set_level!(LogLevel::CRITICAL);
-            assert_eq!(log_level!(), LogLevel::CRITICAL);
+            assert_eq!(wp_get_level!(), LogLevel::CRITICAL);
 
             let logger = this_module!();
             wp_set_level!(logger, LogLevel::ERROR);
-            assert_eq!(wp_get_level!(), LogLevel::CRITICAL);
+            assert_eq!(wp_get_level!(^), LogLevel::CRITICAL);
             assert_eq!(wp_get_level!(logger), LogLevel::ERROR);
-            assert_eq!(log_level!(), LogLevel::ERROR);
+            assert_eq!(wp_get_level!(), LogLevel::ERROR);
 
             let logger = this_file!();
             wp_set_level!(logger, LogLevel::NOTICE);
-            assert_eq!(wp_get_level!(), LogLevel::CRITICAL);
+            assert_eq!(wp_get_level!(^), LogLevel::CRITICAL);
             assert_eq!(wp_get_level!(logger), LogLevel::NOTICE);
-            assert_eq!(log_level!(), LogLevel::NOTICE);
+            assert_eq!(wp_get_level!(), LogLevel::NOTICE);
 
             {
                 let mut output = buf.lock().unwrap();

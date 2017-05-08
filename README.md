@@ -40,6 +40,7 @@ Currently supported:
 * multiple log consumers
 * filtering by module (any part of the module path)
 * filtering by file (any part of the file path)
+* conditional code execution depending on the log level
 * logging to stdout/stderr
 * logging to a file
 * log file rotation (by size)
