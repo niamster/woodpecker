@@ -21,14 +21,14 @@ use record::Record;
 /// ```ignore
 /// |<log-level>| time module@file:line <message>
 /// ```
-pub fn formatter(record: &Record) -> Box<String> {
-    Box::new(format!(
+pub fn formatter(record: &Record) -> String {
+    format!(
         concat!("|{}| {} {}", wp_separator!(), "{}:{} {}\n"),
-        record.level,
+        record.level(),
         record.ts_utc(),
-        record.module,
-        record.file,
-        record.line,
+        record.module(),
+        record.file(),
+        record.line(),
         record.msg(),
-    ))
+    )
 }

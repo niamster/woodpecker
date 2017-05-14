@@ -73,6 +73,18 @@
 //! }
 //!
 //! ```
+//!
+//! Woodpecker supports logging in a dedicated thread.
+//!
+//! This frees the application from the latency caused by formatting
+//! the log string and emitting it into a log sink(terminal, file, network, etc.).
+//!
+//! It's important to use [sync](fn.sync.html) in the end of the `main` funtion
+//! to ensure that all log records are properly flushed.
+//!
+//! The logging thread is either activated explicitly via
+//! [init_with_thread](fn.init_with_thread.html) function or by setting
+//! `WP_LOG_THREAD` environment variable which overrides compile-time settings.
 
 #[doc(hidden)]
 #[macro_use]
@@ -80,19 +92,19 @@ pub mod helpers;
 
 /// Definition of the log levels.
 pub mod levels;
-#[doc(hidden)]
+#[doc(inline)]
 pub use levels::LogLevel;
 
 /// Definition of the log record entry.
 pub mod record;
-#[doc(hidden)]
+#[doc(inline)]
 pub use record::Record;
 
 /// The logger core.
 #[macro_use]
 pub mod logger;
 #[doc(inline)]
-pub use logger::init;
+pub use logger::{init, init_with_thread, sync};
 
 /// Collection of log handlers.
 pub mod handlers;

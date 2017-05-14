@@ -71,6 +71,8 @@ impl From<isize> for LogLevel {
     }
 }
 
+// TODO: use pub(crate) when stabilized (should in v1.18)
+// https://github.com/rust-lang/rust/issues/32409
 // NOTE: `LOG` level should not be included here
 #[doc(hidden)]
 pub const LEVELS: [LogLevel; 8] = [

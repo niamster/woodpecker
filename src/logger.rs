@@ -13,46 +13,56 @@
 // limitations under the License.
 
 extern crate parking_lot;
-use self::parking_lot::RwLock;
+use self::parking_lot::{RwLock, Mutex};
 
 extern crate time;
 
 use std::mem;
-use std::sync::{Arc, Once, ONCE_INIT};
-use std::sync::atomic::{AtomicIsize, AtomicBool, Ordering, ATOMIC_ISIZE_INIT, ATOMIC_BOOL_INIT};
+use std::sync::{Arc, Once, ONCE_INIT, mpsc};
+use std::sync::atomic::{AtomicIsize, AtomicUsize, AtomicBool, Ordering,
+                        ATOMIC_ISIZE_INIT, ATOMIC_USIZE_INIT, ATOMIC_BOOL_INIT};
 use std::collections::{LinkedList, BTreeMap};
 use std::collections::Bound::{Included, Excluded, Unbounded};
+use std::time::Duration;
+use std::thread;
 use std::fmt;
+use std::env;
 
 use levels::LogLevel;
 use record::Record;
+use record::record::{SyncRecord, AsyncRecord};
 use formatters::Formatter;
 use handlers::Handler;
 
 static LOG_LEVEL: AtomicIsize = ATOMIC_ISIZE_INIT;
 static HAS_SUBLOGGERS: AtomicBool = ATOMIC_BOOL_INIT;
+static SENT: AtomicUsize = ATOMIC_USIZE_INIT;
+static RECEIVED: AtomicUsize = ATOMIC_USIZE_INIT;
+static LOG_THREAD: AtomicBool = ATOMIC_BOOL_INIT;
 static IS_INIT: AtomicBool = ATOMIC_BOOL_INIT;
 
 #[doc(hidden)]
 pub struct RootLogger<'a> {
     loggers: BTreeMap<String, LogLevel>,
-    formatter: Formatter<'a>,
+    formatter: Arc<Formatter>,
     handlers: LinkedList<Handler<'a>>,
+    tx: Mutex<mpsc::Sender<Box<Record>>>,
 }
 
 impl<'a> RootLogger<'a> {
-    #[doc(hidden)]
-    pub fn new() -> Self {
+    fn new(tx: mpsc::Sender<Box<Record>>) -> Self {
         RootLogger {
             loggers: BTreeMap::new(),
-            formatter: Box::new(::formatters::default::formatter),
+            formatter: Arc::new(Box::new(::formatters::default::formatter)),
             handlers: LinkedList::new(),
+            tx: Mutex::new(tx),
         }
     }
 
-    #[doc(hidden)]
-    pub fn reset(&mut self) {
-        *self = Self::new();
+    fn reset(&mut self) {
+        self.loggers.clear();
+        self.formatter = Arc::new(Box::new(::formatters::default::formatter));
+        self.handlers.clear();
     }
 
     #[doc(hidden)]
@@ -66,8 +76,8 @@ impl<'a> RootLogger<'a> {
     }
 
     #[doc(hidden)]
-    pub fn formatter(&mut self, formatter: Formatter<'a>) {
-        self.formatter = formatter;
+    pub fn formatter(&mut self, formatter: Formatter) {
+        self.formatter = Arc::new(formatter);
     }
 
     fn remove_children(&mut self, path: &str) {
@@ -107,12 +117,26 @@ impl<'a> RootLogger<'a> {
 
     #[doc(hidden)]
     pub fn log(&self, level: LogLevel, module: &'static str, file: &'static str, line: u32, args: fmt::Arguments) {
-        let record = Record::new(level, module, file, line, time::get_time(), args, &self.formatter);
+        let record = SyncRecord::new(level, module, file, line, time::get_time(), args, self.formatter.clone());
+        if !LOG_THREAD.load(Ordering::Relaxed) {
+            self.process(&record);
+        } else {
+            let record: AsyncRecord = record.into();
+            {
+                let tx = self.tx.lock();
+                let _ = tx.send(Box::new(record));
+            }
+            SENT.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    #[inline(always)]
+    fn process(&self, record: &Record) {
         if self.handlers.is_empty() {
             ::handlers::stdout::emit(&record.formatted());
         } else {
             for h in &self.handlers {
-                h(&record);
+                h(record);
             }
         }
     }
@@ -121,26 +145,81 @@ impl<'a> RootLogger<'a> {
 #[doc(hidden)]
 #[inline(always)]
 pub fn root() -> Arc<RwLock<RootLogger<'static>>> {
-    static mut LOGGERS: *const Arc<RwLock<RootLogger<'static>>> = 0 as *const Arc<RwLock<RootLogger>>;
+    static mut ROOT: *const Arc<RwLock<RootLogger<'static>>> = 0 as *const Arc<RwLock<RootLogger>>;
     static ONCE: Once = ONCE_INIT;
     unsafe {
         ONCE.call_once(|| {
+            let (tx, rx) = mpsc::channel();
+
             assert!(IS_INIT.load(Ordering::Relaxed));
-            let root = Arc::new(RwLock::new(RootLogger::new()));
-            LOGGERS = mem::transmute(Box::new(root));
+            let root = Arc::new(RwLock::new(RootLogger::new(tx)));
+
+            if LOG_THREAD.load(Ordering::Relaxed) {
+                let root = root.clone();
+                thread::spawn(move || {
+                    loop {
+                        let record = rx.recv().unwrap();
+                        {
+                            let root = root.read();
+                            root.process(record.as_ref());
+                        }
+                        RECEIVED.fetch_add(1, Ordering::Relaxed);
+                    }
+                });
+            }
+
+
+            ROOT = mem::transmute(Box::new(root));
         });
 
-        (*LOGGERS).clone()
+        (*ROOT).clone()
+    }
+}
+
+/// Ensures that the logging queue is completely consumed by the log thread.
+///
+/// Normally this should be called in the very end of the program execution
+/// to ensure that all log records are properly flushed.
+pub fn sync() {
+    loop {
+        let sent = SENT.load(Ordering::Relaxed);
+        let received = RECEIVED.load(Ordering::SeqCst);
+        if sent == received {
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
     }
 }
 
 #[doc(hidden)]
 pub fn reset() {
+    sync();
     let root = root();
     let mut root = root.write();
     global_set_level(LogLevel::WARN);
     global_set_loggers(false);
     root.reset();
+}
+
+fn __init(log_thread: bool) {
+    let log_thread = match env::var("WP_LOG_THREAD") {
+        Ok(ref val) => {
+            let val = &val.to_lowercase()[..1];
+            if val == "y" || val == "1" {
+                true
+            } else {
+                false
+            }
+        }
+        _ => log_thread,
+    };
+    LOG_THREAD.store(log_thread, Ordering::Relaxed);
+
+    // NOTE: it's not a real guard.
+    // The `init` function is supposed to be called once on init.
+    assert!(!IS_INIT.swap(true, Ordering::Relaxed));
+
+    reset();
 }
 
 /// Initializes the crate's kitchen.
@@ -161,10 +240,45 @@ pub fn reset() {
 ///
 /// ```
 pub fn init() {
-    // NOTE: it's not a real guard.
-    // The `init` function is supposed to be called once on init.
-    assert!(!IS_INIT.swap(true, Ordering::Relaxed));
-    reset();
+    __init(false);
+}
+
+/// Same as [init](fn.init.html) but enables the log thread.
+///
+/// Consider using [sync](fn.sync.html) to ensure that all log
+/// records are properly flushed.
+///
+/// # Example
+///
+/// ```rust
+/// #[macro_use]
+/// extern crate woodpecker;
+/// use woodpecker as wp;
+///
+/// use std::sync::{Arc, Mutex};
+/// use std::ops::Deref;
+///
+/// fn main() {
+///     wp::init_with_thread();
+///
+///     let out = Arc::new(Mutex::new(String::new()));
+///     {
+///         let out = out.clone();
+///         wp_register_handler!(Box::new(move |record| {
+///             out.lock().unwrap().push_str(record.msg().deref());
+///         }));
+///
+///         warn!("foo");
+///     }
+///
+///     wp::sync();
+///
+///     assert_eq!(*out.lock().unwrap(), "foo".to_string());
+/// }
+///
+/// ```
+pub fn init_with_thread() {
+    __init(true);
 }
 
 #[doc(hidden)]
@@ -322,7 +436,9 @@ macro_rules! wp_get_level {
 macro_rules! __wp_write_action {
     ($func:ident($arg:expr)) => {{
         let root = $crate::logger::root();
-        root.write().$func($arg);
+        $crate::logger::sync();
+        let mut root = root.write();
+        root.$func($arg);
     }};
 }
 
@@ -365,6 +481,9 @@ macro_rules! __wp_write_action {
 ///
 ///         warn!("foo");
 ///     }
+///     if cfg!(feature = "test-thread-log") {
+///         wp::sync();
+///     }
 ///     assert_eq!(*out.lock().unwrap(), "foo".to_string());
 /// }
 ///
@@ -399,7 +518,7 @@ macro_rules! wp_register_handler {
 ///     wp::init();
 ///
 ///     wp_set_formatter!(Box::new(|record| {
-///         Box::new(format!("{}:{}", record.level, record.msg()))
+///         format!("{}:{}", record.level(), record.msg())
 ///     }));
 ///     let out = Arc::new(Mutex::new(String::new()));
 ///     {
@@ -409,6 +528,9 @@ macro_rules! wp_register_handler {
 ///         }));
 ///
 ///         warn!("foo");
+///     }
+///     if cfg!(feature = "test-thread-log") {
+///         wp::sync();
 ///     }
 ///     assert_eq!(*out.lock().unwrap(), "WARN:foo".to_string());
 /// }
@@ -474,6 +596,9 @@ macro_rules! wp_separator {
 ///         in_trace!({
 ///             log!("Not seen though");
 ///         });
+///     }
+///     if cfg!(feature = "test-thread-log") {
+///         wp::sync();
 ///     }
 ///     assert_eq!(*out.lock().unwrap(), format!(">{}<", msg));
 /// }
@@ -788,6 +913,7 @@ mod tests {
 
                 for l in LEVELS.iter() {
                     log!(*l => "msg");
+                    sync();
                     let mut output = buf.lock().unwrap();
                     if *l >= wp_get_level!() {
                         assert!(output.as_str().contains("msg"));
@@ -804,17 +930,18 @@ mod tests {
                 assert_eq!(*l, wp_get_level!());
 
                 log!(">>{}<<", "unconditional");
+                sync();
                 let mut output = buf.lock().unwrap();
                 assert!(output.as_str().contains(">>unconditional<<"));
                 output.clear();
             }
 
             wp_set_formatter!(Box::new(|record| {
-                Box::new(format!(
+                format!(
                     "{}:{}",
-                    record.level,
+                    record.level(),
                     record.msg(),
-                ))
+                )
             }));
 
             let logger = "woodpecker";
@@ -831,6 +958,7 @@ mod tests {
                 drop(output);
                 verbose!("msg");
                 debug!("msg");
+                sync();
                 let output = buf.lock().unwrap();
                 assert_eq!(output.as_str(), "VERBOSE:msg");
             }
@@ -856,6 +984,7 @@ mod tests {
                 drop(output);
                 notice!("msg");
                 verbose!("msg");
+                sync();
                 let output = buf.lock().unwrap();
                 assert_eq!(output.as_str(), "NOTICE:msg");
             }
@@ -877,6 +1006,7 @@ mod tests {
                 log!("visible");
             });
 
+            sync();
             let output = buf.lock().unwrap();
             assert_eq!(output.as_str(), "visible");
         });
@@ -897,6 +1027,7 @@ mod tests {
                 info!("msg");
                 debug!("foo");
             }
+            sync();
             assert_eq!(buf.lock().unwrap().split("msg").count(), 2);
             assert_eq!(*out.read(), "msg|".to_string());
         });
@@ -912,17 +1043,18 @@ mod tests {
                     out.write().push_str(record.formatted().deref());
                 }));
                 wp_set_formatter!(Box::new(|record| {
-                    Box::new(format!(
+                    format!(
                         "{}:{}|",
-                        record.level,
+                        record.level(),
                         record.msg(),
-                    ))
+                    )
                 }));
 
                 wp_set_level!(LogLevel::INFO);
                 info!("msg");
                 debug!("foo");
             }
+            sync();
             assert_eq!(*out.read(), "INFO:msg|".to_string());
         });
     }
@@ -938,11 +1070,11 @@ mod tests {
                     out.write().push_str(record.formatted().deref());
                 }));
                 wp_set_formatter!(Box::new(move |record| {
-                    Box::new(format!(
+                    format!(
                         "{}:{}",
-                        record.level,
+                        record.level(),
                         record.msg(),
-                    ))
+                    )
                 }));
 
                 let mut threads = Vec::new();

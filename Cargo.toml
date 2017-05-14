@@ -11,6 +11,10 @@ homepage = "https://github.com/niamster/woodpecker"
 repository = "https://github.com/niamster/woodpecker"
 readme = "README.md"
 
+[features]
+default = []
+test-thread-log = []
+
 [[bench]]
 name = "benches"
 harness = false

@@ -17,6 +17,8 @@ use std::ops::Deref;
 
 use handlers::Handler;
 
+// TODO: use pub(crate) when stabilized (should in v1.18)
+// https://github.com/rust-lang/rust/issues/32409
 #[doc(hidden)]
 pub fn emit(formatted: &String) {
     let stdout = io::stdout();
