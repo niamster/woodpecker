@@ -1,6 +1,6 @@
 [package]
 name = "woodpecker"
-version = "0.1.2"
+version = "0.2.0"
 authors = ["Dmytro Milinevskyi <dmilinevskyi@gmail.com>"]
 description = "Fast and extensible logging for Rust"
 keywords = ["log", "logging", "fast", "extensible"]
@@ -10,6 +10,9 @@ documentation = "https://docs.rs/woodpecker"
 homepage = "https://github.com/niamster/woodpecker"
 repository = "https://github.com/niamster/woodpecker"
 readme = "README.md"
+exclude = [
+    "tests/examples"
+]
 
 [features]
 default = []
