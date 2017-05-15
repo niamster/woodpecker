@@ -70,11 +70,9 @@ cache:
 
 test_script:
   - cargo build --all --verbose %cargoflags%
-  - set WP_LOG_THREAD=n; cargo test --all --verbose %cargoflags%
-  - set WP_LOG_THREAD=y; cargo test --all --verbose %cargoflags%
+  - cargo test --all --verbose %cargoflags%
   - cargo doc --all --verbose %cargoflags%
-  - set WP_LOG_THREAD=n; cargo bench --verbose %cargoflags%
-  - set WP_LOG_THREAD=y; cargo bench --verbose %cargoflags%
+  - cargo bench --verbose %cargoflags%
 
 branches:
   only:
