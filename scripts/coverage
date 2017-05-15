@@ -1,11 +1,26 @@
 #!/bin/sh
 
+coveralls=
+[ -n "$TRAVIS_JOB_ID" ] && coveralls="--coveralls-id=${TRAVIS_JOB_ID}"
+
+exclude="--exclude-pattern=.cargo,/usr/lib"
+
 PROJECT=woodpecker
 OUTPUT=target/cov/${PROJECT}
+
+POUTPUT1=${OUTPUT}-1
+POUTPUT2=${OUTPUT}-2
+
+POUTPUT="${POUTPUT1} ${POUTPUT2}"
 
 die() {
     echo $*
     exit 1
+}
+
+findexe() {
+    EXE=$(find target/debug -type f -executable -name "${PROJECT}-*" -printf '%p\n' | sort -r | head -n 1)
+    [ -z "$EXE" ] && die "Failed to find test file"
 }
 
 kcov=${HOME}/apps/kcov/bin/kcov
@@ -15,16 +30,16 @@ fi
 
 ${kcov} --version >/dev/null 2>&1 || die "kcov is not installed"
 
+rm -rf $OUTPUT $POUTPUT
+mkdir -p $OUTPUT $POUTPUT
+
 cargo test --no-run || die
-EXE=$(find target/debug -type f -executable -name "${PROJECT}-*" -printf '%p\n' | sort -r | head -n 1)
-[ -z "$EXE" ] && die "Failed to find test file"
+findexe
+${kcov} $exclude --verify $POUTPUT1 $EXE || die
 
-rm -rf $OUTPUT
-mkdir -p $OUTPUT
+cargo test --no-run --features test-thread-log || die
+WP_LOG_THREAD=y ${kcov} $exclude --verify $POUTPUT2 $EXE || die
 
-coveralls=
-[ -n "$TRAVIS_JOB_ID" ] && coveralls="--coveralls-id=${TRAVIS_JOB_ID}"
-
-${kcov} $coveralls --exclude-pattern=.cargo,/usr/lib --verify $OUTPUT $EXE || exit 1
+${kcov} $coveralls --merge $OUTPUT $POUTPUT || die
 
 echo "Check out the coverage via file://$(pwd)/${OUTPUT}/index.html"
