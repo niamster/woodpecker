@@ -827,7 +827,11 @@ mod tests {
 
         let context = unsafe {
             ONCE.call_once(|| {
-                init();
+                if cfg!(feature = "test-thread-log") {
+                    init_with_thread();
+                } else {
+                    init();
+                }
 
                 let context = Arc::new(TContext {
                     lock: Mutex::new(0),

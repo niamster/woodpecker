@@ -71,8 +71,10 @@ cache:
 test_script:
   - cargo build --all --verbose %cargoflags%
   - cargo test --all --verbose %cargoflags%
+  - cargo test --all --verbose --features test-thread-log %cargoflags%
   - cargo doc --all --verbose %cargoflags%
   - cargo bench --verbose %cargoflags%
+  - cargo bench --verbose --features test-thread-log %cargoflags%
 
 branches:
   only:

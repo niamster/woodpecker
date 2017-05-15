@@ -38,7 +38,8 @@ findexe
 ${kcov} $exclude --verify $POUTPUT1 $EXE || die
 
 cargo test --no-run --features test-thread-log || die
-WP_LOG_THREAD=y ${kcov} $exclude --verify $POUTPUT2 $EXE || die
+findexe
+${kcov} $exclude --verify $POUTPUT2 $EXE || die
 
 ${kcov} $coveralls --merge $OUTPUT $POUTPUT || die
 

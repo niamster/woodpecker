@@ -30,10 +30,10 @@ matrix:
 script:
   - cargo build --all --verbose
   - cargo test --all --verbose
-  - WP_LOG_THREAD=y cargo test --all --verbose --features test-thread-log
+  - cargo test --all --verbose --features test-thread-log
   - cargo doc --all --verbose
   - cargo bench --verbose
-  - WP_LOG_THREAD=y cargo bench --verbose
+  - cargo bench --verbose --features test-thread-log
 
 after_success:
   - scripts/build-kcov
