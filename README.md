@@ -56,14 +56,14 @@ Check it out on [docs.rs/woodpecker](https://docs.rs/woodpecker).
 
 In Cargo.toml:
 
-```
+```toml
 [dependencies]
 woodpecker = "0.2"
 ```
 
 In your `main.rs`:
 
-```
+```rust
 #[macro_use]
 extern crate woodpecker;
 ```
