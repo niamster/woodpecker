@@ -30,7 +30,7 @@ use std::env;
 
 use levels::LogLevel;
 use record::Record;
-use record::record::{SyncRecord, AsyncRecord};
+use record::record::{SyncRecord, AsyncRecord, RecordMeta};
 use formatters::Formatter;
 use handlers::Handler;
 
@@ -46,11 +46,11 @@ pub struct RootLogger<'a> {
     loggers: BTreeMap<String, LogLevel>,
     formatter: Arc<Formatter>,
     handlers: LinkedList<Handler<'a>>,
-    tx: Mutex<mpsc::Sender<Box<Record>>>,
+    tx: Mutex<mpsc::Sender<AsyncRecord>>,
 }
 
 impl<'a> RootLogger<'a> {
-    fn new(tx: mpsc::Sender<Box<Record>>) -> Self {
+    fn new(tx: mpsc::Sender<AsyncRecord>) -> Self {
         RootLogger {
             loggers: BTreeMap::new(),
             formatter: Arc::new(Box::new(::formatters::default::formatter)),
@@ -116,15 +116,15 @@ impl<'a> RootLogger<'a> {
     }
 
     #[doc(hidden)]
-    pub fn log(&self, level: LogLevel, module: &'static str, file: &'static str, line: u32, args: fmt::Arguments) {
-        let record = SyncRecord::new(level, module, file, line, time::get_time(), args, self.formatter.clone());
+    pub fn log(&self, record: &'static RecordMeta, args: fmt::Arguments) {
+        let record = SyncRecord::new(record, time::get_time(), args, self.formatter.clone());
         if !LOG_THREAD.load(Ordering::Relaxed) {
             self.process(&record);
         } else {
             let record: AsyncRecord = record.into();
             {
                 let tx = self.tx.lock();
-                let _ = tx.send(Box::new(record));
+                let _ = tx.send(record);
             }
             SENT.fetch_add(1, Ordering::Relaxed);
         }
@@ -161,7 +161,7 @@ pub fn root() -> Arc<RwLock<RootLogger<'static>>> {
                         let record = rx.recv().unwrap();
                         {
                             let root = root.read();
-                            root.process(record.as_ref());
+                            root.process(&record);
                         }
                         RECEIVED.fetch_add(1, Ordering::Relaxed);
                     }
@@ -607,26 +607,40 @@ macro_rules! wp_separator {
 #[macro_export]
 macro_rules! log {
     ($level:expr => $($arg:tt)*) => {{
+        use $crate::record::record::RecordMeta;
+        static RECORD: RecordMeta = RecordMeta {
+            level: $level,
+            module: module_path!(),
+            file: file!(),
+            line: line!(),
+        };
         if $crate::logger::global_has_loggers() {
             let path = this_file!();
             let root = $crate::logger::root();
             let root = root.read();
             if root.get_level(path) <= $level {
-                root.log($level, module_path!(), file!(), line!(), format_args!($($arg)*));
+                root.log(&RECORD, format_args!($($arg)*));
             }
         } else {
             if $crate::logger::global_get_level() <= $level {
                 let root = $crate::logger::root();
                 let root = root.read();
-                root.log($level, module_path!(), file!(), line!(), format_args!($($arg)*));
+                root.log(&RECORD, format_args!($($arg)*));
             }
         }
     }};
 
     ($($arg:tt)*) => {{
+        use $crate::record::record::RecordMeta;
+        static RECORD: RecordMeta = RecordMeta {
+            level: $crate::LogLevel::LOG,
+            module: module_path!(),
+            file: file!(),
+            line: line!(),
+        };
         let root = $crate::logger::root();
         let root = root.read();
-        root.log($crate::LogLevel::LOG, module_path!(), file!(), line!(), format_args!($($arg)*));
+        root.log(&RECORD, format_args!($($arg)*));
     }};
 }
 
@@ -916,7 +930,17 @@ mod tests {
                 assert_eq!(*l, wp_get_level!());
 
                 for l in LEVELS.iter() {
-                    log!(*l => "msg");
+                    match *l {
+                        LogLevel::TRACE => trace!("msg"),
+                        LogLevel::DEBUG => debug!("msg"),
+                        LogLevel::VERBOSE => verbose!("msg"),
+                        LogLevel::INFO => info!("msg"),
+                        LogLevel::NOTICE => notice!("msg"),
+                        LogLevel::WARN => warn!("msg"),
+                        LogLevel::ERROR => error!("msg"),
+                        LogLevel::CRITICAL => critical!("msg"),
+                        LogLevel::LOG => panic!(),
+                    }
                     sync();
                     let mut output = buf.lock().unwrap();
                     if *l >= wp_get_level!() {

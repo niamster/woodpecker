@@ -29,30 +29,13 @@ use formatters::Formatter;
 use levels::LogLevel;
 use record::Record;
 
+#[doc(hidden)]
 #[derive(Clone)]
-struct RecordMeta {
-    level: LogLevel,
-    module: &'static str,
-    file: &'static str,
-    line: u32,
-    ts: time::Timespec,
-}
-
-impl RecordMeta {
-    #[inline(always)]
-    fn new(level: LogLevel,
-           module: &'static str,
-           file: &'static str,
-           line: u32,
-           ts: time::Timespec) -> Self {
-        RecordMeta {
-            level: level,
-            module: module,
-            file: file,
-            line: line,
-            ts: ts,
-        }
-    }
+pub struct RecordMeta {
+    pub level: LogLevel,
+    pub module: &'static str,
+    pub file: &'static str,
+    pub line: u32,
 }
 
 struct RecordLazyMetaInner {
@@ -71,17 +54,17 @@ impl RecordLazyMetaInner {
         }
     }
 
-    fn mk_msg<'a>(&mut self, args: &fmt::Arguments<'a>) {
+    fn mk_msg<'a>(&mut self, args: fmt::Arguments<'a>) {
         if self.msg.is_none() {
             let mut mstr = String::new();
-            mstr.write_fmt(*args).unwrap();
+            mstr.write_fmt(args).unwrap();
             self.msg = Some(Arc::new(mstr));
         }
     }
 
-    fn mk_ts_utc(&mut self, record: &RecordMeta) {
+    fn mk_ts_utc(&mut self, ts: &time::Timespec) {
         if self.ts_utc.is_none() {
-            let naive = chrono::NaiveDateTime::from_timestamp(record.ts.sec, record.ts.nsec as u32);
+            let naive = chrono::NaiveDateTime::from_timestamp(ts.sec, ts.nsec as u32);
             self.ts_utc = Some(Arc::new(chrono::DateTime::from_utc(naive, chrono::UTC)));
         }
     }
@@ -101,7 +84,7 @@ impl RecordLazyMeta {
         }
     }
 
-    fn msg<'a>(&self, args: &fmt::Arguments<'a>) -> Arc<String> {
+    fn msg<'a>(&self, args: fmt::Arguments<'a>) -> Arc<String> {
         let mut irecord = self.irecord.lock();
         irecord.mk_msg(args);
         let msg = irecord.msg.as_ref().unwrap();
@@ -127,9 +110,9 @@ impl RecordLazyMeta {
         formatted.clone()
     }
 
-    fn ts_utc(&self, record: &RecordMeta) -> Arc<DateTime<UTC>> {
+    fn ts_utc(&self, ts: &time::Timespec) -> Arc<DateTime<UTC>> {
         let mut irecord = self.irecord.lock();
-        irecord.mk_ts_utc(record);
+        irecord.mk_ts_utc(ts);
         let ts_utc = irecord.ts_utc.as_ref().unwrap();
         ts_utc.clone()
     }
@@ -139,9 +122,10 @@ impl RecordLazyMeta {
 // https://github.com/rust-lang/rust/issues/32409
 #[doc(hidden)]
 pub struct SyncRecord<'a> {
-    irecord: RecordMeta,
+    irecord: &'static RecordMeta,
     args: fmt::Arguments<'a>,
     precord: Arc<RecordLazyMeta>,
+    ts: time::Timespec,
 }
 
 impl<'a> SyncRecord<'a> {
@@ -149,11 +133,13 @@ impl<'a> SyncRecord<'a> {
     // https://github.com/rust-lang/rust/issues/32409
     #[doc(hidden)]
     #[inline(always)]
-    pub fn new(level: LogLevel, module: &'static str, file: &'static str, line: u32,
-           ts: time::Timespec, args: fmt::Arguments<'a>,
-           formatter: Arc<Formatter>) -> Self {
+    pub fn new(record: &'static RecordMeta,
+               ts: time::Timespec,
+               args: fmt::Arguments<'a>,
+               formatter: Arc<Formatter>) -> Self {
         SyncRecord {
-            irecord: RecordMeta::new(level, module, file, line, ts),
+            irecord: record,
+            ts: ts,
             args: args,
             precord: Arc::new(RecordLazyMeta::new(formatter)),
         }
@@ -183,11 +169,11 @@ impl<'a> Record for SyncRecord<'a> {
 
     #[inline(always)]
     fn ts(&self) -> time::Timespec {
-        self.irecord.ts
+        self.ts
     }
 
     fn msg(&self) -> Arc<String> {
-        return self.precord.msg(&self.args)
+        return self.precord.msg(self.args)
     }
 
     fn formatted(&self) -> Arc<String> {
@@ -195,7 +181,7 @@ impl<'a> Record for SyncRecord<'a> {
     }
 
     fn ts_utc(&self) -> Arc<DateTime<UTC>> {
-        return self.precord.ts_utc(&self.irecord)
+        return self.precord.ts_utc(&self.ts)
     }
 }
 
@@ -203,9 +189,10 @@ impl<'a> Record for SyncRecord<'a> {
 // https://github.com/rust-lang/rust/issues/32409
 #[doc(hidden)]
 pub struct AsyncRecord {
-    irecord: RecordMeta,
+    irecord: &'static RecordMeta,
     msg: Arc<String>,
     precord: Arc<RecordLazyMeta>,
+    ts: time::Timespec,
 }
 
 impl Record for AsyncRecord {
@@ -231,7 +218,7 @@ impl Record for AsyncRecord {
 
     #[inline(always)]
     fn ts(&self) -> time::Timespec {
-        self.irecord.ts
+        self.ts
     }
 
     fn msg(&self) -> Arc<String> {
@@ -243,7 +230,7 @@ impl Record for AsyncRecord {
     }
 
     fn ts_utc(&self) -> Arc<DateTime<UTC>> {
-        return self.precord.ts_utc(&self.irecord)
+        return self.precord.ts_utc(&self.ts)
     }
 }
 
@@ -256,6 +243,7 @@ impl<'a> From<SyncRecord<'a>> for AsyncRecord {
             irecord: orig.irecord,
             msg: Arc::new(mstr),
             precord: orig.precord,
+            ts: orig.ts,
         }
     }
 }
