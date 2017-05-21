@@ -29,6 +29,8 @@ use formatters::Formatter;
 use levels::LogLevel;
 use record::Record;
 
+const PREALLOC: usize = 128;
+
 #[doc(hidden)]
 #[derive(Clone)]
 pub struct RecordMeta {
@@ -56,7 +58,7 @@ impl RecordLazyMetaInner {
 
     fn mk_msg<'a>(&mut self, args: fmt::Arguments<'a>) {
         if self.msg.is_none() {
-            let mut mstr = String::new();
+            let mut mstr = String::with_capacity(PREALLOC);
             mstr.write_fmt(args).unwrap();
             self.msg = Some(Arc::new(mstr));
         }
@@ -237,7 +239,7 @@ impl Record for AsyncRecord {
 impl<'a> From<SyncRecord<'a>> for AsyncRecord {
     #[inline(always)]
     fn from(orig: SyncRecord) -> AsyncRecord {
-        let mut mstr = String::new();
+        let mut mstr = String::with_capacity(PREALLOC);
         mstr.write_fmt(orig.args).unwrap();
         AsyncRecord {
             irecord: orig.irecord,
