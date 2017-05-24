@@ -130,18 +130,18 @@ mod wpb {
 
     fn foo_loggers() {
         for idx in 0..FOO_LOGGERS_QTY {
-            wp_set_level!(format!("foo::bar::qux::{}", idx), wp::LogLevel::DEBUG);
+            wp_set_level!(wp::LogLevel::DEBUG, format!("foo::bar::qux::{}", idx));
         }
     }
 
     fn foo_loggers_this_module() {
         foo_loggers();
-        wp_set_level!(this_module!(), wp::LogLevel::INFO);
+        wp_set_level!(wp::LogLevel::INFO, this_module!());
     }
 
     fn foo_loggers_this_file() {
         foo_loggers();
-        wp_set_level!(this_file!(), wp::LogLevel::INFO);
+        wp_set_level!(wp::LogLevel::INFO, this_file!());
     }
 
     // No output, single thread

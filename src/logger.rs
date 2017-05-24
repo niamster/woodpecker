@@ -17,6 +17,7 @@ use self::parking_lot::{RwLock, Mutex};
 
 extern crate time;
 
+use std;
 use std::mem;
 use std::sync::{Arc, Once, ONCE_INIT, mpsc};
 use std::sync::atomic::{AtomicIsize, AtomicUsize, AtomicBool, Ordering,
@@ -41,9 +42,60 @@ static RECEIVED: AtomicUsize = ATOMIC_USIZE_INIT;
 static LOG_THREAD: AtomicBool = ATOMIC_BOOL_INIT;
 static IS_INIT: AtomicBool = ATOMIC_BOOL_INIT;
 
+/// The markers of the begging of the file and its end.
+pub enum LineRangeBound {
+    /// Beginning of the file.
+    BOF,
+    /// End of the file.
+    EOF,
+}
+
+impl From<LineRangeBound> for u32 {
+    #[inline(always)]
+    fn from(orig: LineRangeBound) -> u32 {
+        match orig {
+            LineRangeBound::BOF => 0,
+            LineRangeBound::EOF => std::u32::MAX,
+        }
+    }
+}
+
+#[doc(hidden)]
+#[derive(Clone)]
+pub struct LineRange {
+    pub level: LogLevel,
+    pub from: u32,
+    pub to: u32,
+}
+
+impl LineRange {
+    #[doc(hidden)]
+    #[inline(always)]
+    pub fn new(level: LogLevel, from: u32, to: u32) -> Self {
+        assert!(from <= to, "Invalid range [{}; {}]", from, to);
+        LineRange {
+            level: level,
+            from: from,
+            to: to,
+        }
+    }
+}
+
+impl fmt::Debug for LineRange {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "[{}; {}]", self.from, self.to)
+    }
+}
+
+struct LevelMeta {
+    level: LogLevel,
+    lrange: Vec<LineRange>,
+}
+
 #[doc(hidden)]
 pub struct RootLogger<'a> {
-    loggers: BTreeMap<String, LogLevel>,
+    loggers: BTreeMap<String, LevelMeta>,
     formatter: Arc<Formatter>,
     handlers: LinkedList<Handler<'a>>,
     tx: Mutex<mpsc::Sender<AsyncRecord>>,
@@ -97,18 +149,30 @@ impl<'a> RootLogger<'a> {
     }
 
     #[doc(hidden)]
-    pub fn set_level(&mut self, path: &str, level: LogLevel) {
+    pub fn set_level(&mut self, level: LogLevel, path: &str, lrange: Vec<LineRange>) {
         self.remove_children(path);
-        self.loggers.insert(path.to_string(), level);
+        let logger = LevelMeta {
+            level: level,
+            lrange: lrange,
+        };
+        self.loggers.insert(path.to_string(), logger);
     }
 
     #[doc(hidden)]
     #[inline(always)]
-    pub fn get_level(&self, path: &str) -> LogLevel {
+    pub fn get_level(&self, path: &str, line: u32) -> LogLevel {
         let range = self.loggers.range::<str, _>((Unbounded, Included(path)));
-        for (name, level) in range.rev() {
+        for (name, logger) in range.rev() {
             if path.starts_with(name) {
-                return *level;
+                if line == LineRangeBound::EOF.into() || logger.lrange.is_empty() {
+                    return logger.level;
+                }
+                for range in &logger.lrange {
+                    if line >= range.from && line <= range.to {
+                        return range.level;
+                    }
+                }
+                return logger.level;
             }
         }
 
@@ -308,6 +372,10 @@ pub fn global_set_loggers(value: bool) {
 /// Sets global log level if called without the arguments or
 /// according to the specified path otherwise.
 ///
+/// Optionally the ranges of the lines within the file could
+/// be given.
+/// In this case the full path to the file must be provided.
+///
 /// See documentation for the [wp_get_level](macro.wp_get_level.html)
 /// for more details on the log level hierarchy.
 ///
@@ -324,20 +392,78 @@ pub fn global_set_loggers(value: bool) {
 ///     let logger = "foo::bar";
 ///
 ///     wp_set_level!(wp::LogLevel::INFO);
-///     wp_set_level!(logger, wp::LogLevel::CRITICAL);
+///     wp_set_level!(wp::LogLevel::CRITICAL, logger);
 ///
 ///     assert_eq!(wp_get_level!(^), wp::LogLevel::INFO);
+///     assert_eq!(wp_get_level!(), wp::LogLevel::INFO);
 ///     assert_eq!(wp_get_level!(logger), wp::LogLevel::CRITICAL);
+///
+///     wp_set_level!(wp::LogLevel::WARN, this_file!(), [(line!() + 2, wp::EOF)]);
+///     assert_eq!(wp_get_level!(), wp::LogLevel::INFO);
+///     assert_eq!(wp_get_level!(), wp::LogLevel::WARN);
+///
+///     wp_set_level!(wp::LogLevel::CRITICAL, this_file!());
+///     let ranges = vec![(wp::BOF.into(), line!() + 2), (line!() + 4, wp::EOF.into())];
+///     wp_set_level!(wp::LogLevel::WARN, this_file!(), ranges);
+///     assert_eq!(wp_get_level!(), wp::LogLevel::WARN);
+///     assert_eq!(wp_get_level!(), wp::LogLevel::CRITICAL);
+///     assert_eq!(wp_get_level!(), wp::LogLevel::WARN);
+///
+///     wp_set_level!(wp::LogLevel::TRACE, this_file!(), [(wp::BOF, wp::EOF)]);
+///     assert_eq!(wp_get_level!(), wp::LogLevel::TRACE);
 /// }
 ///
 /// ```
 #[macro_export]
 macro_rules! wp_set_level {
-    ($logger:expr, $level:expr) => {{
+    ($level:expr, $logger:expr, [$(($from:expr, $to:expr)),*]) => {{
+        let mut lrange = Vec::new();
+        $(
+            let (from, to): (u32, u32) = ($from.into(), $to.into());
+            lrange.push((from, to));
+        )*;
+        wp_set_level!($level, $logger, lrange);
+    }};
+    ($level:expr, $logger:expr, $lrange:expr) => {{
+        __wp_logger_is_string!($logger);
+        let mut lrange: Vec<$crate::logger::LineRange> = $lrange.iter()
+            .map(|&(from, to)|
+                 $crate::logger::LineRange::new($level, from, to)
+            ).collect();
+        lrange.sort_by_key(|k| k.from);
+        // FIXME: merge the ranges
+        if lrange.len() == 1 {
+            let mut full = false;
+            if true {
+                let first = lrange.first().unwrap();
+                    full = first.from == $crate::BOF.into() && first.to == $crate::EOF.into();
+            }
+            if full {
+                lrange.clear();
+            }
+        }
+        let path = $logger.to_string();
+        if file!() != "<anon>" {
+            assert!(path.ends_with(".rs"), "File path not specified");
+        }
+        if path.find(wp_separator!()).is_none() {
+            panic!("Module not specified");
+        }
+        let root = $crate::logger::root();
+        let mut root = root.write();
+        let level = if lrange.is_empty() {
+            $level
+        } else {
+            root.get_level(&path, $crate::EOF.into())
+        };
+        root.set_level(level, &path, lrange);
+        $crate::logger::global_set_loggers(true);
+    }};
+    ($level:expr, $logger:expr) => {{
         __wp_logger_is_string!($logger);
         let root = $crate::logger::root();
         let mut root = root.write();
-        root.set_level(&$logger.to_string(), $level);
+        root.set_level($level, &$logger.to_string(), Vec::new());
         $crate::logger::global_set_loggers(true);
     }};
     ($level:expr) => {{
@@ -383,7 +509,7 @@ macro_rules! wp_set_level {
 ///     assert_eq!(wp_get_level!(logger), wp::LogLevel::WARN);
 ///
 ///     wp_set_level!(wp::LogLevel::INFO);
-///     wp_set_level!(logger, wp::LogLevel::CRITICAL);
+///     wp_set_level!(wp::LogLevel::CRITICAL, logger);
 ///
 ///     assert_eq!(wp_get_level!(^), wp::LogLevel::INFO);
 ///     assert_eq!(wp_get_level!(logger), wp::LogLevel::CRITICAL);
@@ -392,10 +518,10 @@ macro_rules! wp_set_level {
 ///     assert_eq!(wp_get_level!("foo::bar::qux"), wp::LogLevel::CRITICAL);
 ///     assert_eq!(wp_get_level!("foo"), wp::LogLevel::INFO);
 ///
-///     wp_set_level!(module_path!(), wp::LogLevel::CRITICAL);
+///     wp_set_level!(wp::LogLevel::CRITICAL, module_path!());
 ///     assert_eq!(wp_get_level!(), wp::LogLevel::CRITICAL);
 ///
-///     wp_set_level!(this_file!(), wp::LogLevel::DEBUG);
+///     wp_set_level!(wp::LogLevel::DEBUG, this_file!());
 ///     assert_eq!(wp_get_level!(), wp::LogLevel::DEBUG);
 ///
 ///     assert_eq!(wp_get_level!(^), wp::LogLevel::INFO);
@@ -414,7 +540,7 @@ macro_rules! wp_get_level {
             let path = this_file!();
             let root = $crate::logger::root();
             let root = root.read();
-            root.get_level(path)
+            root.get_level(path, line!())
         } else {
             $crate::logger::global_get_level()
         }
@@ -423,7 +549,7 @@ macro_rules! wp_get_level {
         __wp_logger_is_string!($logger);
         if $crate::logger::global_has_loggers() {
             let root = $crate::logger::root();
-            let level = root.read().get_level(&$logger.to_string());
+            let level = root.read().get_level(&$logger.to_string(), $crate::EOF.into());
             level
         } else {
             $crate::logger::global_get_level()
@@ -618,7 +744,7 @@ macro_rules! log {
             let path = this_file!();
             let root = $crate::logger::root();
             let root = root.read();
-            if root.get_level(path) <= $level {
+            if root.get_level(path, line!()) <= $level {
                 root.log(&RECORD, format_args!($($arg)*));
             }
         } else {
@@ -893,7 +1019,7 @@ mod tests {
     #[test]
     fn test_logger_hierarchy() {
         run_test(|_| {
-            wp_set_level!("foo::bar::qux", LogLevel::CRITICAL);
+            wp_set_level!(LogLevel::CRITICAL, "foo::bar::qux");
 
             assert_eq!(wp_get_level!(^), LogLevel::WARN);
             assert_eq!(wp_get_level!("foo::bar::qux::xyz"), LogLevel::CRITICAL);
@@ -918,7 +1044,25 @@ mod tests {
     #[test]
     #[should_panic(expected = "Logger name must be a string")]
     fn test_logger_type_string_1() {
-        wp_set_level!(42, LogLevel::INFO);
+        wp_set_level!(LogLevel::INFO, 42);
+    }
+
+    #[test]
+    #[should_panic(expected = "File path not specified")]
+    fn test_set_level_range_0() {
+        wp_set_level!(LogLevel::TRACE, module_path!(), [(LineRangeBound::BOF, LineRangeBound::EOF)]);
+    }
+
+    #[test]
+    #[should_panic(expected = "Module not specified")]
+    fn test_set_level_range_1() {
+        wp_set_level!(LogLevel::TRACE, file!(), [(LineRangeBound::BOF, LineRangeBound::EOF)]);
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid range")]
+    fn test_set_level_range_2() {
+        wp_set_level!(LogLevel::TRACE, this_file!(), [(2u32, 1u32)]);
     }
 
     #[test]
@@ -974,7 +1118,7 @@ mod tests {
 
             let logger = "woodpecker";
             wp_set_level!(LogLevel::WARN);
-            wp_set_level!(logger, LogLevel::VERBOSE);
+            wp_set_level!(LogLevel::VERBOSE, logger);
             assert_eq!(wp_get_level!(^), LogLevel::WARN);
             assert_eq!(wp_get_level!("foo"), LogLevel::WARN);
             assert_eq!(wp_get_level!(logger), LogLevel::VERBOSE);
@@ -995,13 +1139,13 @@ mod tests {
             assert_eq!(wp_get_level!(), LogLevel::CRITICAL);
 
             let logger = this_module!();
-            wp_set_level!(logger, LogLevel::ERROR);
+            wp_set_level!(LogLevel::ERROR, logger);
             assert_eq!(wp_get_level!(^), LogLevel::CRITICAL);
             assert_eq!(wp_get_level!(logger), LogLevel::ERROR);
             assert_eq!(wp_get_level!(), LogLevel::ERROR);
 
             let logger = this_file!();
-            wp_set_level!(logger, LogLevel::NOTICE);
+            wp_set_level!(LogLevel::NOTICE, logger);
             assert_eq!(wp_get_level!(^), LogLevel::CRITICAL);
             assert_eq!(wp_get_level!(logger), LogLevel::NOTICE);
             assert_eq!(wp_get_level!(), LogLevel::NOTICE);
