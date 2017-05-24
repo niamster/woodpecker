@@ -40,6 +40,7 @@ Currently supported:
 * multiple log consumers
 * filtering by module (any part of the module path)
 * filtering by file (any part of the file path)
+* filtering by a line range within a file
 * conditional code execution depending on the log level
 * logging in a dedicated thread
 * logging to stdout/stderr
@@ -58,7 +59,7 @@ In Cargo.toml:
 
 ```toml
 [dependencies]
-woodpecker = "0.2"
+woodpecker = "0.3"
 ```
 
 In your `main.rs`:

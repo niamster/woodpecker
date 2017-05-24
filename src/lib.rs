@@ -37,7 +37,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! woodpecker = "0.2"
+//! woodpecker = "0.3"
 //! ```
 //!
 //! In your `main.rs`:
