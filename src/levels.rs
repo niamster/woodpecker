@@ -89,16 +89,16 @@ pub const LEVELS: [LogLevel; 8] = [
 impl fmt::Display for LogLevel {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &LogLevel::TRACE => write!(f, "TRACE"),
-            &LogLevel::DEBUG => write!(f, "DEBUG"),
-            &LogLevel::VERBOSE => write!(f, "VERBOSE"),
-            &LogLevel::INFO => write!(f, "INFO"),
-            &LogLevel::NOTICE => write!(f, "NOTICE"),
-            &LogLevel::WARN => write!(f, "WARN"),
-            &LogLevel::ERROR => write!(f, "ERROR"),
-            &LogLevel::CRITICAL => write!(f, "CRITICAL"),
-            &LogLevel::LOG => write!(f, "LOG"),
+        match *self {
+            LogLevel::TRACE => write!(f, "TRACE"),
+            LogLevel::DEBUG => write!(f, "DEBUG"),
+            LogLevel::VERBOSE => write!(f, "VERBOSE"),
+            LogLevel::INFO => write!(f, "INFO"),
+            LogLevel::NOTICE => write!(f, "NOTICE"),
+            LogLevel::WARN => write!(f, "WARN"),
+            LogLevel::ERROR => write!(f, "ERROR"),
+            LogLevel::CRITICAL => write!(f, "CRITICAL"),
+            LogLevel::LOG => write!(f, "LOG"),
         }
     }
 }

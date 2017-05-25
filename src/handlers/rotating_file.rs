@@ -37,10 +37,9 @@ impl Context {
     }
 
     fn new(path: &Path, count: usize, size: u64) -> Self {
-        match path.parent() {
-            Some(dir) => create_dir_all(dir).unwrap(),
-            None => {},
-        };
+        if let Some(dir) = path.parent() {
+            create_dir_all(dir).unwrap();
+        }
         let file = Self::open(path);
         assert!(size > 0);
         assert!(count > 0);

@@ -175,15 +175,15 @@ impl<'a> Record for SyncRecord<'a> {
     }
 
     fn msg(&self) -> Arc<String> {
-        return self.precord.msg(self.args)
+        self.precord.msg(self.args)
     }
 
     fn formatted(&self) -> Arc<String> {
-        return self.precord.formatted(self)
+        self.precord.formatted(self)
     }
 
     fn ts_utc(&self) -> Arc<DateTime<UTC>> {
-        return self.precord.ts_utc(&self.ts)
+        self.precord.ts_utc(&self.ts)
     }
 }
 
@@ -228,11 +228,11 @@ impl Record for AsyncRecord {
     }
 
     fn formatted(&self) -> Arc<String> {
-        return self.precord.formatted(self)
+        self.precord.formatted(self)
     }
 
     fn ts_utc(&self) -> Arc<DateTime<UTC>> {
-        return self.precord.ts_utc(&self.ts)
+        self.precord.ts_utc(&self.ts)
     }
 }
 

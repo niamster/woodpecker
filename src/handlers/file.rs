@@ -25,10 +25,9 @@ struct Context {
 
 impl Context {
     fn new(path: &Path) -> Self {
-        match path.parent() {
-            Some(dir) => create_dir_all(dir).unwrap(),
-            None => {},
-        };
+        if let Some(dir) = path.parent() {
+            create_dir_all(dir).unwrap();
+        }
         Context {
             file: OpenOptions::new().append(true).create(true).open(path).unwrap(),
         }

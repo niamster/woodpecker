@@ -20,10 +20,10 @@ use handlers::Handler;
 // TODO: use pub(crate) when stabilized (should in v1.18)
 // https://github.com/rust-lang/rust/issues/32409
 #[doc(hidden)]
-pub fn emit(formatted: &String) {
+pub fn emit(formatted: &str) {
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
-    stdout.write(formatted.as_bytes()).unwrap();
+    stdout.write_all(formatted.as_bytes()).unwrap();
 }
 
 /// Pushes formatted log record into stdout.

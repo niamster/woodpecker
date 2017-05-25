@@ -22,7 +22,7 @@ use std::mem;
 use std::sync::{Arc, Once, ONCE_INIT, mpsc};
 use std::sync::atomic::{AtomicIsize, AtomicUsize, AtomicBool, Ordering,
                         ATOMIC_ISIZE_INIT, ATOMIC_USIZE_INIT, ATOMIC_BOOL_INIT};
-use std::collections::{LinkedList, BTreeMap};
+use std::collections::BTreeMap;
 use std::collections::Bound::{Included, Excluded, Unbounded};
 use std::time::Duration;
 use std::thread;
@@ -97,7 +97,7 @@ struct LevelMeta {
 pub struct RootLogger<'a> {
     loggers: BTreeMap<String, LevelMeta>,
     formatter: Arc<Formatter>,
-    handlers: LinkedList<Handler<'a>>,
+    handlers: Vec<Handler<'a>>,
     tx: Mutex<mpsc::Sender<AsyncRecord>>,
 }
 
@@ -106,7 +106,7 @@ impl<'a> RootLogger<'a> {
         RootLogger {
             loggers: BTreeMap::new(),
             formatter: Arc::new(Box::new(::formatters::default::formatter)),
-            handlers: LinkedList::new(),
+            handlers: Vec::new(),
             tx: Mutex::new(tx),
         }
     }
@@ -124,7 +124,7 @@ impl<'a> RootLogger<'a> {
 
     #[doc(hidden)]
     pub fn handler(&mut self, handler: Handler<'a>) {
-        self.handlers.push_front(handler);
+        self.handlers.push(handler);
     }
 
     #[doc(hidden)]
@@ -133,14 +133,14 @@ impl<'a> RootLogger<'a> {
     }
 
     fn remove_children(&mut self, path: &str) {
-        let mut trash = LinkedList::new();
+        let mut trash = Vec::new();
         {
             let range = self.loggers.range::<str, _>((Excluded(path), Unbounded));
             for (name, _) in range {
                 if !name.starts_with(path) {
                     break;
                 }
-                trash.push_front(name.to_string());
+                trash.push(name.to_string());
             }
         }
         for item in trash {
@@ -269,11 +269,7 @@ fn __init(log_thread: bool) {
     let log_thread = match env::var("WP_LOG_THREAD") {
         Ok(ref val) => {
             let val = &val.to_lowercase()[..1];
-            if val == "y" || val == "1" {
-                true
-            } else {
-                false
-            }
+            val == "y" || val == "1"
         }
         _ => log_thread,
     };
