@@ -52,4 +52,4 @@ pub trait Record: Send + Sync {
 // TODO: use pub(crate) when stabilized (should in v1.18)
 // https://github.com/rust-lang/rust/issues/32409
 #[doc(hidden)]
-pub mod record;
+pub mod imp;

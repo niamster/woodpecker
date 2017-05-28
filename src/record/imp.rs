@@ -47,7 +47,7 @@ struct RecordLazyMetaInner {
 }
 
 #[inline(always)]
-fn format<'a>(args: fmt::Arguments<'a>) -> Arc<String> {
+fn format(args: fmt::Arguments) -> Arc<String> {
     let mut mstr = String::with_capacity(PREALLOC);
     // Should check for formatting failure, although it's quite expensive.
     let _ = mstr.write_fmt(args);

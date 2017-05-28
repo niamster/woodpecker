@@ -31,7 +31,7 @@ use std::env;
 
 use levels::LogLevel;
 use record::Record;
-use record::record::{SyncRecord, AsyncRecord, RecordMeta};
+use record::imp::{SyncRecord, AsyncRecord, RecordMeta};
 use formatters::Formatter;
 use handlers::Handler;
 
@@ -47,7 +47,7 @@ static IS_INIT: AtomicBool = ATOMIC_BOOL_INIT;
 /// This separator is used to join module and file paths.
 #[macro_export]
 macro_rules! wp_separator {
-    () => ("@")
+    () => ('@')
 }
 
 /// The markers of the begging of the file and its end.
@@ -257,16 +257,12 @@ pub fn root() -> Arc<RwLock<RootLogger>> {
             if LOG_THREAD.load(Ordering::Relaxed) {
                 let root = root.clone();
                 thread::spawn(move || {
-                    loop {
-                        if let Ok(record) = rx.recv() {
-                            {
-                                let root = root.read();
-                                root.process(&record);
-                            }
-                            RECEIVED.fetch_add(1, Ordering::Relaxed);
-                        } else {
-                            break;
+                    while let Ok(record) = rx.recv() {
+                        {
+                            let root = root.read();
+                            root.process(&record);
                         }
+                        RECEIVED.fetch_add(1, Ordering::Relaxed);
                     }
                 });
             }
@@ -305,7 +301,7 @@ pub fn reset() {
 }
 
 #[doc(hidden)]
-pub fn prepare_ranges(level: LogLevel, lranges: &Vec<(u32, u32)>) -> Result<Vec<LineRange>, String> {
+pub fn prepare_ranges(level: LogLevel, lranges: &[(u32, u32)]) -> Result<Vec<LineRange>, String> {
     let (lranges, fails): (Vec<_>, Vec<_>) = lranges.iter()
         .map(|&(from, to)| LineRange::new(level, from, to))
         .partition(Result::is_ok);
@@ -763,7 +759,7 @@ macro_rules! wp_set_formatter {
 #[macro_export]
 macro_rules! log {
     ($level:expr => $($arg:tt)*) => {{
-        use $crate::record::record::RecordMeta;
+        use $crate::record::imp::RecordMeta;
         static RECORD: RecordMeta = RecordMeta {
             level: $level,
             module: this_module!(),
@@ -787,7 +783,7 @@ macro_rules! log {
     }};
 
     ($($arg:tt)*) => {{
-        use $crate::record::record::RecordMeta;
+        use $crate::record::imp::RecordMeta;
         static RECORD: RecordMeta = RecordMeta {
             level: $crate::LogLevel::LOG,
             module: this_module!(),
