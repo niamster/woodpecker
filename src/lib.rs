@@ -105,7 +105,10 @@ pub use record::Record;
 pub mod logger;
 #[doc(inline)]
 pub use logger::{init, init_with_thread, sync};
-pub use logger::LineRangeBound::{BOF, EOF};
+
+#[doc(hidden)]
+pub mod line_range;
+pub use line_range::LineRangeBound::{BOF, EOF};
 
 /// Collection of log handlers.
 pub mod handlers;

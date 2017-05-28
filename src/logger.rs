@@ -17,7 +17,6 @@ use self::parking_lot::{RwLock, Mutex};
 
 extern crate time;
 
-use std;
 use std::mem;
 use std::sync::{Arc, Once, ONCE_INIT, mpsc};
 use std::sync::atomic::{AtomicIsize, AtomicUsize, AtomicBool, Ordering,
@@ -32,6 +31,7 @@ use std::env;
 use levels::LogLevel;
 use record::Record;
 use record::imp::{SyncRecord, AsyncRecord, RecordMeta};
+use line_range::{LineRangeBound, LineRange};
 use formatters::Formatter;
 use handlers::Handler;
 
@@ -48,55 +48,6 @@ static IS_INIT: AtomicBool = ATOMIC_BOOL_INIT;
 #[macro_export]
 macro_rules! wp_separator {
     () => ('@')
-}
-
-/// The markers of the begging of the file and its end.
-pub enum LineRangeBound {
-    /// Beginning of the file.
-    BOF,
-    /// End of the file.
-    EOF,
-}
-
-impl From<LineRangeBound> for u32 {
-    #[inline(always)]
-    fn from(orig: LineRangeBound) -> u32 {
-        match orig {
-            LineRangeBound::BOF => 0,
-            LineRangeBound::EOF => std::u32::MAX,
-        }
-    }
-}
-
-#[doc(hidden)]
-#[derive(Clone)]
-pub struct LineRange {
-    pub level: LogLevel,
-    pub from: u32,
-    pub to: u32,
-}
-
-impl LineRange {
-    #[doc(hidden)]
-    #[inline(always)]
-    pub fn new(level: LogLevel, from: u32, to: u32) -> Result<Self, String> {
-        if from > to {
-            Err(format!("Invalid range [{}; {}]", from, to))
-        } else {
-            Ok(LineRange {
-                level: level,
-                from: from,
-                to: to,
-            })
-        }
-    }
-}
-
-impl fmt::Debug for LineRange {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[{}; {}]", self.from, self.to)
-    }
 }
 
 struct LevelMeta {
@@ -300,32 +251,6 @@ pub fn reset() {
     root.reset();
 }
 
-#[doc(hidden)]
-pub fn prepare_ranges(level: LogLevel, lranges: &[(u32, u32)]) -> Result<Vec<LineRange>, String> {
-    let (lranges, fails): (Vec<_>, Vec<_>) = lranges.iter()
-        .map(|&(from, to)| LineRange::new(level, from, to))
-        .partition(Result::is_ok);
-    if !fails.is_empty() {
-        let err = fails.first().unwrap().clone();
-        return Err(err.unwrap_err());
-    }
-
-    let mut lranges: Vec<_> = lranges.into_iter().map(Result::unwrap).collect();
-    lranges.sort_by_key(|k| k.from);
-
-    // FIXME: merge the ranges
-
-    if lranges.len() == 1 {
-        let first = lranges.first().unwrap().clone();
-        if first.from == LineRangeBound::BOF.into()
-            && first.to == LineRangeBound::EOF.into() {
-            lranges.clear();
-        }
-    }
-
-    Ok(lranges)
-}
-
 fn __init(log_thread: bool) {
     let log_thread = match env::var("WP_LOG_THREAD") {
         Ok(ref val) => {
@@ -482,7 +407,7 @@ macro_rules! wp_set_level {
         wp_set_level!($level, $logger, lranges)
     }};
     ($level:expr, $logger:expr, $lranges:expr) => {{
-        match $crate::logger::prepare_ranges($level, &$lranges) {
+        match $crate::line_range::prepare_ranges($level, &$lranges) {
             Ok(lranges) => {
                 let root = $crate::logger::root();
                 let mut root = root.write();
