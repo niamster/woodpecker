@@ -17,6 +17,8 @@ use std::fmt;
 /// The logging levels.
 #[derive(PartialEq, PartialOrd, Clone, Copy, Debug)]
 pub enum LogLevel {
+    /// Used to indicate the unsupported log level.
+    UNSUPPORTED,
     /// Log all messages.
     TRACE,
     /// Log only debug messages and above.
@@ -40,6 +42,7 @@ pub enum LogLevel {
 impl From<LogLevel> for isize {
     fn from(orig: LogLevel) -> isize {
         match orig {
+            LogLevel::UNSUPPORTED => -10000,
             LogLevel::TRACE => -30,
             LogLevel::DEBUG => -20,
             LogLevel::VERBOSE => -10,
@@ -66,7 +69,7 @@ impl From<isize> for LogLevel {
             30  => LogLevel::ERROR,
             40  => LogLevel::CRITICAL,
             50  => LogLevel::LOG,
-            _   => panic!("Unsupported log level {}", orig),
+            _   => LogLevel::UNSUPPORTED,
         }
     }
 }
@@ -90,6 +93,7 @@ impl fmt::Display for LogLevel {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
+            LogLevel::UNSUPPORTED => write!(f, "UNSUPPORTED"),
             LogLevel::TRACE => write!(f, "TRACE"),
             LogLevel::DEBUG => write!(f, "DEBUG"),
             LogLevel::VERBOSE => write!(f, "VERBOSE"),
@@ -100,5 +104,18 @@ impl fmt::Display for LogLevel {
             LogLevel::CRITICAL => write!(f, "CRITICAL"),
             LogLevel::LOG => write!(f, "LOG"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_logger_level() {
+        assert_eq!(LogLevel::from(0), LogLevel::INFO);
+
+        assert_eq!(LogLevel::from(-1), LogLevel::UNSUPPORTED);
+        assert_eq!(LogLevel::from(-1000), LogLevel::UNSUPPORTED);
     }
 }

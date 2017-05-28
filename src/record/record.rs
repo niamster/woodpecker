@@ -46,6 +46,14 @@ struct RecordLazyMetaInner {
     ts_utc: Option<Arc<DateTime<UTC>>>,
 }
 
+#[inline(always)]
+fn format<'a>(args: fmt::Arguments<'a>) -> Arc<String> {
+    let mut mstr = String::with_capacity(PREALLOC);
+    // Should check for formatting failure, although it's quite expensive.
+    let _ = mstr.write_fmt(args);
+    Arc::new(mstr)
+}
+
 impl RecordLazyMetaInner {
     #[inline(always)]
     fn new() -> Self {
@@ -58,9 +66,7 @@ impl RecordLazyMetaInner {
 
     fn mk_msg<'a>(&mut self, args: fmt::Arguments<'a>) {
         if self.msg.is_none() {
-            let mut mstr = String::with_capacity(PREALLOC);
-            mstr.write_fmt(args).unwrap();
-            self.msg = Some(Arc::new(mstr));
+            self.msg = Some(format(args));
         }
     }
 
@@ -239,11 +245,9 @@ impl Record for AsyncRecord {
 impl<'a> From<SyncRecord<'a>> for AsyncRecord {
     #[inline(always)]
     fn from(orig: SyncRecord) -> AsyncRecord {
-        let mut mstr = String::with_capacity(PREALLOC);
-        mstr.write_fmt(orig.args).unwrap();
         AsyncRecord {
             irecord: orig.irecord,
-            msg: Arc::new(mstr),
+            msg: format(orig.args),
             precord: orig.precord,
             ts: orig.ts,
         }

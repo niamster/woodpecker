@@ -23,11 +23,11 @@ use handlers::Handler;
 pub fn emit(formatted: &str) {
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
-    stdout.write_all(formatted.as_bytes()).unwrap();
+    let _ = stdout.write_all(formatted.as_bytes());
 }
 
 /// Pushes formatted log record into stdout.
-pub fn handler() -> Handler<'static> {
+pub fn handler() -> Handler {
     Box::new(|record| {
         emit(record.formatted().deref());
     })

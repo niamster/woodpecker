@@ -17,7 +17,7 @@ use record::Record;
 /// Type of the log handlers function.
 ///
 /// Pushes a log record into a log sink.
-pub type Handler<'a> = Box<Fn(&Record) + 'a + Send + Sync>;
+pub type Handler = Box<Fn(&Record) + Send + Sync>;
 
 /// Stdout log handler.
 pub mod stdout;

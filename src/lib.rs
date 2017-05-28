@@ -67,7 +67,7 @@
 //! fn main() {
 //!     wp::init();
 //!
-//!     wp_set_level!(wp::LogLevel::INFO);
+//!     wp_set_level!(wp::LogLevel::INFO).unwrap();
 //!     info!("{} is saying hello", "woodpecker");
 //!     debug!("I'm invisible");
 //! }

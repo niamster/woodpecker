@@ -12,12 +12,43 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+extern crate parking_lot;
+use self::parking_lot::Mutex;
+
 use std::fs::{File, OpenOptions, create_dir_all, rename};
-use std::sync::Mutex;
 use std::path::{Path, PathBuf};
+use std::fmt;
+use std::io;
 use std::io::Write;
 
 use handlers::Handler;
+
+/// The errors that might occur during creation of the handler.
+pub enum RotatingFileHandlerError {
+    /// Any kind of I/O Error.
+    IoError(io::Error),
+    /// Log file size is invalid.
+    SizeError(u64),
+    /// Log file count is invalid.
+    CountError(usize),
+}
+
+impl From<io::Error> for RotatingFileHandlerError {
+    fn from(e: io::Error) -> Self {
+        RotatingFileHandlerError::IoError(e)
+    }
+}
+
+impl fmt::Debug for RotatingFileHandlerError {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            RotatingFileHandlerError::IoError(ref err) => write!(f, "{}", err),
+            RotatingFileHandlerError::SizeError(ref size) => write!(f, "Invalid size {}", size),
+            RotatingFileHandlerError::CountError(ref count) => write!(f, "Invalid count {}", count),
+        }
+    }
+}
 
 struct Context {
     path: PathBuf,
@@ -28,45 +59,96 @@ struct Context {
 }
 
 impl Context {
-    fn open(path: &Path) -> File {
-        OpenOptions::new().append(true).create(true).open(path).unwrap()
+    fn open(path: &Path) -> Result<File, RotatingFileHandlerError> {
+        match OpenOptions::new().append(true).create(true).open(path) {
+            Ok(file) => Ok(file),
+            Err(err) => Err(err.into()),
+        }
     }
 
     fn logs(path: &Path, count: usize) -> Vec<PathBuf> {
         (0..count-1).rev().map(|r| PathBuf::from(format!("{}.{}", path.display(), r))).collect()
     }
 
-    fn new(path: &Path, count: usize, size: u64) -> Self {
+    fn new(path: &Path, count: usize, size: u64) -> Result<Self, RotatingFileHandlerError> {
         if let Some(dir) = path.parent() {
-            create_dir_all(dir).unwrap();
+            create_dir_all(dir)?;
         }
-        let file = Self::open(path);
-        assert!(size > 0);
-        assert!(count > 0);
-        Context {
+        let file = Self::open(path)?;
+        if size == 0 {
+            return Err(RotatingFileHandlerError::SizeError(size));
+        }
+        if count == 0 {
+            return Err(RotatingFileHandlerError::CountError(count));
+        }
+        Ok(Context {
             path: path.into(),
             logs: Self::logs(path, count),
             size: size,
-            current: file.metadata().unwrap().len(),
+            current: file.metadata()?.len(),
             file: file,
+        })
+    }
+
+    fn ____emit(&mut self, msg: &[u8]) {
+        let _ = self.file.write_all(msg);
+        self.current += msg.len() as u64;
+    }
+
+    fn __emit(&mut self, msg: String) {
+        self.____emit(msg.as_bytes())
+    }
+
+    fn rotate(&mut self) {
+        let rlen = self.logs.len();
+
+        for i in 1..rlen {
+            let res = {
+                let old = &self.logs[i];
+                if old.exists() {
+                    rename(old, &self.logs[i - 1])
+                } else {
+                    Ok(())
+                }
+            };
+
+            if res.is_err() {
+                let msg = {
+                    let old = self.logs[i].display();
+                    let new = self.logs[i - 1].display();
+                    format!("Failed to rename {} into {}: {}", old, new, res.unwrap_err())
+                };
+                self.__emit(msg);
+            }
+        }
+
+        let _ = self.file.flush();
+
+        if let Err(err) = rename(&self.path, &self.logs[rlen - 1]) {
+            let msg = {
+                let old = self.path.display();
+                let new = self.logs[rlen - 1].display();
+                format!("Failed to rename {} into {}: {}", old, new, err)
+            };
+            self.__emit(msg);
         }
     }
 
     fn emit(&mut self, msg: &[u8]) {
-        let _ = self.file.write(msg);
-        self.current += msg.len() as u64;
+        self.____emit(msg);
         if self.current >= self.size {
-            let rlen = self.logs.len();
-            for i in 1..rlen {
-                let old = &self.logs[i];
-                if old.exists() {
-                    let _ = rename(old, &self.logs[i - 1]);
+            self.rotate();
+
+            match Self::open(&self.path) {
+                Ok(file) => {
+                    self.file = file;
+                    self.current = 0;
+                },
+                Err(err) => {
+                    let msg = format!("Failed to open {}: {:?}", self.path.display(), err);
+                    self.__emit(msg);
                 }
             }
-            let _ = self.file.flush();
-            let _ = rename(&self.path, &self.logs[rlen - 1]);
-            self.file = Self::open(&self.path);
-            self.current = 0;
         }
     }
 }
@@ -80,12 +162,13 @@ impl Context {
 /// Maintains up to `count` log files.
 ///
 /// Each log file after rotation has a numeric suffix.
-pub fn handler(path: &Path, count: usize, size: u64) -> Handler<'static> {
-    let ctx = Mutex::new(Context::new(path, count, size));
-    Box::new(move |record| {
-        let mut ctx = ctx.lock().unwrap();
+pub fn handler(path: &Path, count: usize, size: u64) -> Result<Handler, RotatingFileHandlerError> {
+    let ctx = Context::new(path, count, size)?;
+    let ctx = Mutex::new(ctx);
+    Ok(Box::new(move |record| {
+        let mut ctx = ctx.lock();
         ctx.emit(record.formatted().as_bytes());
-    })
+    }))
 }
 
 #[cfg(test)]
@@ -116,7 +199,7 @@ mod tests {
         let path = dir.path().join("logs").join("test.log");
         let count = 5;
         let size = 20;
-        let mut ctx = super::Context::new(&path, count, size);
+        let mut ctx = super::Context::new(&path, count, size).unwrap();
         let mut logs = super::Context::logs(&path, count + 1);
         logs.reverse();
         let elogs = &logs[..logs.len() - 1];

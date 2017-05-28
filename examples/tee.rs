@@ -29,7 +29,7 @@ fn usage() -> ! {
 
 fn main() {
     wp::init();
-    wp_set_level!(wp::LogLevel::INFO);
+    wp_set_level!(wp::LogLevel::INFO).unwrap();
     wp_register_handler!(wp::handlers::stdout::handler());
     wp_set_formatter!(Box::new(|record| {
         record.msg().deref().clone()
@@ -55,7 +55,7 @@ fn main() {
         if truncate {
             let _ = remove_file(path);
         }
-        wp_register_handler!(wp::handlers::file::handler(path));
+        wp_register_handler!(wp::handlers::file::handler(path).unwrap());
     }
 
     let stdin = std::io::stdin();

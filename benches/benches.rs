@@ -115,7 +115,7 @@ mod wpb {
             }
         });
         wp::logger::reset();
-        wp_set_level!(wp::LogLevel::ERROR);
+        wp_set_level!(wp::LogLevel::ERROR).unwrap();
     }
 
     fn drop_output() {
@@ -130,18 +130,18 @@ mod wpb {
 
     fn foo_loggers() {
         for idx in 0..FOO_LOGGERS_QTY {
-            wp_set_level!(wp::LogLevel::DEBUG, format!("foo::bar::qux::{}", idx));
+            wp_set_level!(wp::LogLevel::DEBUG, &format!("foo::bar::qux::{}", idx)).unwrap();
         }
     }
 
     fn foo_loggers_this_module() {
         foo_loggers();
-        wp_set_level!(wp::LogLevel::INFO, this_module!());
+        wp_set_level!(wp::LogLevel::INFO, this_module!()).unwrap();
     }
 
     fn foo_loggers_this_file() {
         foo_loggers();
-        wp_set_level!(wp::LogLevel::INFO, this_file!());
+        wp_set_level!(wp::LogLevel::INFO, this_file!()).unwrap();
     }
 
     // No output, single thread
