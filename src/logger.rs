@@ -349,6 +349,27 @@ pub fn global_set_loggers(value: bool) {
     HAS_SUBLOGGERS.store(value, Ordering::Relaxed);
 }
 
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __wp_write_root {
+    ($func:ident($($arg:expr),*)) => {{
+        let root = $crate::logger::root();
+        $crate::logger::sync();
+        let mut root = root.write();
+        root.$func($($arg),*)
+    }};
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __wp_read_root {
+    ($func:ident($($arg:expr),*)) => {{
+        let root = $crate::logger::root();
+        let root = root.read();
+        root.$func($($arg),*)
+    }};
+}
+
 /// Sets the log level.
 ///
 /// Sets global log level if called without the arguments or
@@ -406,12 +427,11 @@ macro_rules! wp_set_level {
         )*;
         wp_set_level!($level, $logger, lranges)
     }};
+
     ($level:expr, $logger:expr, $lranges:expr) => {{
         match $crate::line_range::prepare_ranges($level, &$lranges) {
             Ok(lranges) => {
-                let root = $crate::logger::root();
-                let mut root = root.write();
-                root.set_level($level, $logger, lranges)
+                __wp_write_root!(set_level($level, $logger, lranges))
             },
             Err(err) => {
                 let err: Result<(), String> = Err(err);
@@ -419,16 +439,14 @@ macro_rules! wp_set_level {
             },
         }
     }};
+
     ($level:expr, $logger:expr) => {{
-        let root = $crate::logger::root();
-        let mut root = root.write();
-        root.set_level($level, $logger, Vec::new())
+        __wp_write_root!(set_level($level, $logger, Vec::new()))
     }};
+
     ($level:expr) => {{
         $crate::logger::global_set_loggers(false);
-        let root = $crate::logger::root();
-        let mut root = root.write();
-        root.reset_loggers();
+        __wp_write_root!(reset_loggers());
         $crate::logger::global_set_level($level);
         let ok: Result<(), String> = Ok(());
         ok
@@ -495,35 +513,22 @@ macro_rules! wp_get_level {
     (^) => {{
         $crate::logger::global_get_level()
     }};
+
     () => {{
         if $crate::logger::global_has_loggers() {
             let path = this_file!();
-            let root = $crate::logger::root();
-            let root = root.read();
-            root.get_level(path, line!())
+            __wp_read_root!(get_level(path, line!()))
         } else {
             $crate::logger::global_get_level()
         }
     }};
+
     ($logger:expr) => {{
         if $crate::logger::global_has_loggers() {
-            let root = $crate::logger::root();
-            let level = root.read().get_level($logger, $crate::EOF.into());
-            level
+            __wp_read_root!(get_level($logger, $crate::EOF.into()))
         } else {
             $crate::logger::global_get_level()
         }
-    }};
-}
-
-#[doc(hidden)]
-#[macro_export]
-macro_rules! __wp_write_action {
-    ($func:ident($arg:expr)) => {{
-        let root = $crate::logger::root();
-        $crate::logger::sync();
-        let mut root = root.write();
-        root.$func($arg);
     }};
 }
 
@@ -576,7 +581,7 @@ macro_rules! __wp_write_action {
 #[macro_export]
 macro_rules! wp_register_handler {
     ($handler:expr) => {{
-        __wp_write_action!(handler($handler));
+        __wp_write_root!(handler($handler));
     }};
 }
 
@@ -624,7 +629,7 @@ macro_rules! wp_register_handler {
 #[macro_export]
 macro_rules! wp_set_formatter {
     ($formatter:expr) => {{
-        __wp_write_action!(formatter($formatter));
+        __wp_write_root!(formatter($formatter));
     }};
 }
 
@@ -700,9 +705,7 @@ macro_rules! log {
             }
         } else {
             if $crate::logger::global_get_level() <= $level {
-                let root = $crate::logger::root();
-                let root = root.read();
-                root.log(&RECORD, format_args!($($arg)*));
+                __wp_read_root!(log(&RECORD, format_args!($($arg)*)));
             }
         }
     }};
@@ -715,9 +718,7 @@ macro_rules! log {
             file: file!(),
             line: line!(),
         };
-        let root = $crate::logger::root();
-        let root = root.read();
-        root.log(&RECORD, format_args!($($arg)*));
+        __wp_read_root!(log(&RECORD, format_args!($($arg)*)));
     }};
 }
 
