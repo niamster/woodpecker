@@ -13,12 +13,15 @@
 // limitations under the License.
 
 extern crate parking_lot;
-use self::parking_lot::{RwLock, Mutex};
+use self::parking_lot::RwLock;
 
 extern crate time;
 
+extern crate crossbeam;
+use self::crossbeam::sync::MsQueue;
+
 use std::mem;
-use std::sync::{Arc, Once, ONCE_INIT, mpsc};
+use std::sync::{Arc, Once, ONCE_INIT};
 use std::sync::atomic::{AtomicIsize, AtomicUsize, AtomicBool, Ordering,
                         ATOMIC_ISIZE_INIT, ATOMIC_USIZE_INIT, ATOMIC_BOOL_INIT};
 use std::collections::BTreeMap;
@@ -60,16 +63,16 @@ pub struct RootLogger {
     loggers: BTreeMap<String, LevelMeta>,
     formatter: Arc<Formatter>,
     handlers: Vec<Handler>,
-    tx: Mutex<mpsc::Sender<AsyncRecord>>,
+    queue: Arc<MsQueue<AsyncRecord>>,
 }
 
 impl RootLogger {
-    fn new(tx: mpsc::Sender<AsyncRecord>) -> Self {
+    fn new(queue: Arc<MsQueue<AsyncRecord>>) -> Self {
         RootLogger {
             loggers: BTreeMap::new(),
             formatter: Arc::new(Box::new(::formatters::default::formatter)),
             handlers: Vec::new(),
-            tx: Mutex::new(tx),
+            queue: queue,
         }
     }
 
@@ -172,11 +175,7 @@ impl RootLogger {
             self.process(&record);
         } else {
             let record: AsyncRecord = record.into();
-            {
-                let tx = self.tx.lock();
-                // May ignore the errors as the RX channel is always open.
-                let _ = tx.send(record);
-            }
+            self.queue.push(record);
             SENT.fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -200,15 +199,16 @@ pub fn root() -> Arc<RwLock<RootLogger>> {
     static ONCE: Once = ONCE_INIT;
     unsafe {
         ONCE.call_once(|| {
-            let (tx, rx) = mpsc::channel();
+            let queue: Arc<MsQueue<AsyncRecord>> = Arc::new(MsQueue::new());
 
             assert!(IS_INIT.load(Ordering::Relaxed));
-            let root = Arc::new(RwLock::new(RootLogger::new(tx)));
+            let root = Arc::new(RwLock::new(RootLogger::new(queue.clone())));
 
             if LOG_THREAD.load(Ordering::Relaxed) {
                 let root = root.clone();
                 thread::spawn(move || {
-                    while let Ok(record) = rx.recv() {
+                    loop {
+                        let record = queue.pop();
                         {
                             let root = root.read();
                             root.process(&record);

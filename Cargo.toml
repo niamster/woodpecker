@@ -26,6 +26,7 @@ harness = false
 time = "^0.1.36"
 chrono = "0.3"
 parking_lot = "0.4"
+crossbeam = "0.2"
 
 [dev-dependencies]
 bencher = "0.1"
