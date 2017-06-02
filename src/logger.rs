@@ -44,6 +44,8 @@ static SENT: AtomicUsize = ATOMIC_USIZE_INIT;
 static RECEIVED: AtomicUsize = ATOMIC_USIZE_INIT;
 static LOG_THREAD: AtomicBool = ATOMIC_BOOL_INIT;
 static IS_INIT: AtomicBool = ATOMIC_BOOL_INIT;
+static QIDX: AtomicUsize = ATOMIC_USIZE_INIT;
+const QNUM: usize = 64;
 
 /// A file-module separator.
 ///
@@ -58,16 +60,18 @@ struct LevelMeta {
     lranges: Vec<LineRange>,
 }
 
+type QVec = [MsQueue<AsyncRecord>; QNUM];
+
 #[doc(hidden)]
 pub struct RootLogger {
     loggers: BTreeMap<String, LevelMeta>,
     formatter: Arc<Formatter>,
     handlers: Vec<Handler>,
-    queue: Arc<MsQueue<AsyncRecord>>,
+    queue: Arc<QVec>,
 }
 
 impl RootLogger {
-    fn new(queue: Arc<MsQueue<AsyncRecord>>) -> Self {
+    fn new(queue: Arc<QVec>) -> Self {
         RootLogger {
             loggers: BTreeMap::new(),
             formatter: Arc::new(Box::new(::formatters::default::formatter)),
@@ -175,7 +179,8 @@ impl RootLogger {
             self.process(&record);
         } else {
             let record: AsyncRecord = record.into();
-            self.queue.push(record);
+            let qidx = QIDX.fetch_add(1, Ordering::Relaxed) % QNUM;
+            self.queue[qidx].push(record);
             SENT.fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -192,6 +197,12 @@ impl RootLogger {
     }
 }
 
+fn qempty() -> bool {
+    let sent = SENT.load(Ordering::Relaxed);
+    let received = RECEIVED.load(Ordering::Relaxed);
+    sent == received
+}
+
 #[doc(hidden)]
 #[inline(always)]
 pub fn root() -> Arc<RwLock<RootLogger>> {
@@ -199,21 +210,32 @@ pub fn root() -> Arc<RwLock<RootLogger>> {
     static ONCE: Once = ONCE_INIT;
     unsafe {
         ONCE.call_once(|| {
-            let queue: Arc<MsQueue<AsyncRecord>> = Arc::new(MsQueue::new());
+            let mut queues: QVec = mem::uninitialized();
+            for queue in queues.iter_mut() {
+                let z = mem::replace(queue, MsQueue::new());
+                mem::forget(z);
+            }
+            let queues = Arc::new(queues);
 
             assert!(IS_INIT.load(Ordering::Relaxed));
-            let root = Arc::new(RwLock::new(RootLogger::new(queue.clone())));
+            let root = Arc::new(RwLock::new(RootLogger::new(queues.clone())));
 
             if LOG_THREAD.load(Ordering::Relaxed) {
                 let root = root.clone();
                 thread::spawn(move || {
                     loop {
-                        let record = queue.pop();
-                        {
-                            let root = root.read();
-                            root.process(&record);
+                        for queue in queues.iter() {
+                            if let Some(record) = queue.try_pop() {
+                                {
+                                    let root = root.read();
+                                    root.process(&record);
+                                }
+                                RECEIVED.fetch_add(1, Ordering::Relaxed);
+                            }
                         }
-                        RECEIVED.fetch_add(1, Ordering::Relaxed);
+                        if qempty() {
+                            thread::yield_now();
+                        }
                     }
                 });
             }
@@ -231,12 +253,7 @@ pub fn root() -> Arc<RwLock<RootLogger>> {
 /// Normally this should be called in the very end of the program execution
 /// to ensure that all log records are properly flushed.
 pub fn sync() {
-    loop {
-        let sent = SENT.load(Ordering::Relaxed);
-        let received = RECEIVED.load(Ordering::SeqCst);
-        if sent == received {
-            break;
-        }
+    while !qempty() {
         thread::sleep(Duration::from_millis(10));
     }
 }
@@ -1214,6 +1231,7 @@ mod tests {
                     th.join().unwrap();
                 }
             }
+            sync();
             let sum = out.read().split("INFO:").
                 filter(|val| !val.is_empty()).
                 fold(0, |acc, ref val| {
