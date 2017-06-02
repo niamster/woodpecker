@@ -86,6 +86,9 @@
 //! [init_with_thread](fn.init_with_thread.html) function or by setting
 //! `WP_LOG_THREAD` environment variable which overrides compile-time settings.
 
+#[macro_use]
+extern crate lazy_static;
+
 #[doc(hidden)]
 #[macro_use]
 pub mod helpers;

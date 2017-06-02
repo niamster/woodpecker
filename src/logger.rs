@@ -19,6 +19,7 @@ extern crate time;
 
 extern crate crossbeam;
 use self::crossbeam::sync::MsQueue;
+use self::crossbeam::mem::CachePadded;
 
 use std::mem;
 use std::sync::{Arc, Once, ONCE_INIT};
@@ -40,11 +41,13 @@ use handlers::Handler;
 
 static LOG_LEVEL: AtomicIsize = ATOMIC_ISIZE_INIT;
 static HAS_SUBLOGGERS: AtomicBool = ATOMIC_BOOL_INIT;
-static SENT: AtomicUsize = ATOMIC_USIZE_INIT;
-static RECEIVED: AtomicUsize = ATOMIC_USIZE_INIT;
 static LOG_THREAD: AtomicBool = ATOMIC_BOOL_INIT;
 static IS_INIT: AtomicBool = ATOMIC_BOOL_INIT;
-static QIDX: AtomicUsize = ATOMIC_USIZE_INIT;
+lazy_static! {
+    static ref SENT: CachePadded<AtomicUsize> = CachePadded::new(ATOMIC_USIZE_INIT);
+    static ref RECEIVED: CachePadded<AtomicUsize> = CachePadded::new(ATOMIC_USIZE_INIT);
+    static ref QIDX: CachePadded<AtomicUsize> = CachePadded::new(ATOMIC_USIZE_INIT);
+}
 const QNUM: usize = 64;
 
 /// A file-module separator.
@@ -64,7 +67,7 @@ type QVec = [MsQueue<AsyncRecord>; QNUM];
 
 #[doc(hidden)]
 pub struct RootLogger {
-    loggers: BTreeMap<String, LevelMeta>,
+    loggers: CachePadded<BTreeMap<String, LevelMeta>>,
     formatter: Arc<Formatter>,
     handlers: Vec<Handler>,
     queue: Arc<QVec>,
@@ -73,7 +76,7 @@ pub struct RootLogger {
 impl RootLogger {
     fn new(queue: Arc<QVec>) -> Self {
         RootLogger {
-            loggers: BTreeMap::new(),
+            loggers: CachePadded::new(BTreeMap::new()),
             formatter: Arc::new(Box::new(::formatters::default::formatter)),
             handlers: Vec::new(),
             queue: queue,
