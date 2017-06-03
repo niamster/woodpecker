@@ -27,7 +27,7 @@ use std::sync::atomic::{AtomicIsize, AtomicUsize, AtomicBool, Ordering,
                         ATOMIC_ISIZE_INIT, ATOMIC_USIZE_INIT, ATOMIC_BOOL_INIT};
 use std::collections::BTreeMap;
 use std::collections::Bound::{Included, Excluded, Unbounded};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::thread;
 use std::fmt;
 use std::env;
@@ -206,6 +206,48 @@ fn qempty() -> bool {
     sent == received
 }
 
+fn lthread(root: Arc<RwLock<RootLogger>>, queues: Arc<QVec>) {
+    const BWAIT_MS: u64 = 10;
+    const RWAIT_MS: u64 = 500;
+
+    loop {
+        'wait: loop {
+            let now = Instant::now();
+            while qempty() {
+                thread::yield_now();
+                if now.elapsed() > Duration::from_millis(BWAIT_MS) {
+                    thread::sleep(Duration::from_millis(RWAIT_MS));
+                    continue 'wait;
+                }
+            }
+            break;
+        }
+
+        loop {
+            let mut received: usize = 0;
+            for queue in queues.iter() {
+                if queue.is_empty() {
+                    thread::yield_now();
+                    continue;
+                }
+                if let Some(record) = queue.try_pop() {
+                    {
+                        let root = root.read();
+                        root.process(&record);
+                    }
+                    received += 1;
+                }
+                thread::yield_now();
+            }
+            RECEIVED.fetch_add(received, Ordering::Relaxed);
+            if received < QNUM {
+                break;
+            }
+            thread::yield_now();
+        }
+    }
+}
+
 #[doc(hidden)]
 #[inline(always)]
 pub fn root() -> Arc<RwLock<RootLogger>> {
@@ -226,23 +268,9 @@ pub fn root() -> Arc<RwLock<RootLogger>> {
             if LOG_THREAD.load(Ordering::Relaxed) {
                 let root = root.clone();
                 thread::spawn(move || {
-                    loop {
-                        for queue in queues.iter() {
-                            if let Some(record) = queue.try_pop() {
-                                {
-                                    let root = root.read();
-                                    root.process(&record);
-                                }
-                                RECEIVED.fetch_add(1, Ordering::Relaxed);
-                            }
-                        }
-                        if qempty() {
-                            thread::yield_now();
-                        }
-                    }
+                    lthread(root, queues);
                 });
             }
-
 
             ROOT = mem::transmute(Box::new(root));
         });
