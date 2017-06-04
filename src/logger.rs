@@ -21,6 +21,8 @@ extern crate crossbeam;
 use self::crossbeam::sync::MsQueue;
 use self::crossbeam::mem::CachePadded;
 
+extern crate thread_id;
+
 use std::mem;
 use std::sync::{Arc, Once, ONCE_INIT};
 use std::sync::atomic::{AtomicIsize, AtomicUsize, AtomicBool, Ordering,
@@ -39,16 +41,23 @@ use line_range::{LineRangeBound, LineRange};
 use formatters::Formatter;
 use handlers::Handler;
 
+const QNUM: usize = 64;
+
 static LOG_LEVEL: AtomicIsize = ATOMIC_ISIZE_INIT;
 static HAS_SUBLOGGERS: AtomicBool = ATOMIC_BOOL_INIT;
 static LOG_THREAD: AtomicBool = ATOMIC_BOOL_INIT;
 static IS_INIT: AtomicBool = ATOMIC_BOOL_INIT;
 lazy_static! {
-    static ref SENT: CachePadded<AtomicUsize> = CachePadded::new(ATOMIC_USIZE_INIT);
+    static ref SENT: [CachePadded<AtomicUsize>; QNUM] = {
+        let mut sent: [CachePadded<AtomicUsize>; QNUM] = unsafe { mem::uninitialized() };
+        for idx in 0..QNUM {
+            let z = mem::replace(&mut sent[idx], CachePadded::new(ATOMIC_USIZE_INIT));
+            mem::forget(z);
+        }
+        sent
+    };
     static ref RECEIVED: CachePadded<AtomicUsize> = CachePadded::new(ATOMIC_USIZE_INIT);
-    static ref QIDX: CachePadded<AtomicUsize> = CachePadded::new(ATOMIC_USIZE_INIT);
 }
-const QNUM: usize = 64;
 
 /// A file-module separator.
 ///
@@ -182,9 +191,10 @@ impl RootLogger {
             self.process(&record);
         } else {
             let record: AsyncRecord = record.into();
-            let qidx = QIDX.fetch_add(1, Ordering::Relaxed) % QNUM;
+            let qidx = thread_id::get() % QNUM;
+            assert!(qidx < QNUM);
             self.queue[qidx].push(record);
-            SENT.fetch_add(1, Ordering::Relaxed);
+            SENT[qidx].fetch_add(1, Ordering::Relaxed);
         }
     }
 
@@ -201,7 +211,7 @@ impl RootLogger {
 }
 
 fn qempty() -> bool {
-    let sent = SENT.load(Ordering::Relaxed);
+    let sent = SENT.iter().fold(0, |sum, sent| sum + sent.load(Ordering::Relaxed));
     let received = RECEIVED.load(Ordering::Relaxed);
     sent == received
 }
@@ -270,6 +280,9 @@ pub fn root() -> Arc<RwLock<RootLogger>> {
                 thread::spawn(move || {
                     lthread(root, queues);
                 });
+                { // warm up lazy statics
+                    sync();
+                }
             }
 
             ROOT = mem::transmute(Box::new(root));
