@@ -218,7 +218,8 @@ fn qempty() -> bool {
 
 fn lthread(root: Arc<RwLock<RootLogger>>, queues: Arc<QVec>) {
     const BWAIT_MS: u64 = 10;
-    const RWAIT_MS: u64 = 500;
+    #[cfg(not(test))] const RWAIT_MS: u64 = 500;
+    #[cfg(test)] const RWAIT_MS: u64 = 10;
 
     loop {
         'wait: loop {
