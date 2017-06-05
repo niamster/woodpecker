@@ -50,8 +50,8 @@ static IS_INIT: AtomicBool = ATOMIC_BOOL_INIT;
 lazy_static! {
     static ref SENT: [CachePadded<AtomicUsize>; QNUM] = {
         let mut sent: [CachePadded<AtomicUsize>; QNUM] = unsafe { mem::uninitialized() };
-        for idx in 0..QNUM {
-            let z = mem::replace(&mut sent[idx], CachePadded::new(ATOMIC_USIZE_INIT));
+        for sent in sent.iter_mut() {
+            let z = mem::replace(sent, CachePadded::new(ATOMIC_USIZE_INIT));
             mem::forget(z);
         }
         sent
@@ -231,7 +231,11 @@ fn lthread(root: Arc<RwLock<RootLogger>>, queues: Arc<QVec>) {
                     continue 'wait;
                 }
             }
-            break;
+            if true {
+                // Workaround for clippy
+                // https://github.com/Manishearth/rust-clippy/issues/1586
+                break;
+            }
         }
 
         loop {
