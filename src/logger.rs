@@ -263,9 +263,8 @@ fn lthread(root: Arc<RwLock<RootLogger>>, queues: Arc<QVec>) {
     }
 }
 
-#[doc(hidden)]
 #[inline(always)]
-pub fn root() -> Arc<RwLock<RootLogger>> {
+fn root() -> Arc<RwLock<RootLogger>> {
     static mut ROOT: *const Arc<RwLock<RootLogger>> = 0 as *const Arc<RwLock<RootLogger>>;
     static ONCE: Once = ONCE_INIT;
     unsafe {
@@ -297,6 +296,11 @@ pub fn root() -> Arc<RwLock<RootLogger>> {
     }
 }
 
+lazy_static! {
+    #[doc(hidden)]
+    pub static ref ROOT: Arc<RwLock<RootLogger>> = root();
+}
+
 /// Ensures that the logging queue is completely consumed by the log thread.
 ///
 /// Normally this should be called in the very end of the program execution
@@ -310,8 +314,7 @@ pub fn sync() {
 #[doc(hidden)]
 pub fn reset() {
     sync();
-    let root = root();
-    let mut root = root.write();
+    let mut root = ROOT.write();
     global_set_level(LogLevel::WARN);
     global_set_loggers(false);
     root.reset();
@@ -419,9 +422,8 @@ pub fn global_set_loggers(value: bool) {
 #[macro_export]
 macro_rules! __wp_write_root {
     ($func:ident($($arg:expr),*)) => {{
-        let root = $crate::logger::root();
         $crate::logger::sync();
-        let mut root = root.write();
+        let mut root = $crate::logger::ROOT.write();
         root.$func($($arg),*)
     }};
 }
@@ -430,8 +432,7 @@ macro_rules! __wp_write_root {
 #[macro_export]
 macro_rules! __wp_read_root {
     ($func:ident($($arg:expr),*)) => {{
-        let root = $crate::logger::root();
-        let root = root.read();
+        let root = $crate::logger::ROOT.read();
         root.$func($($arg),*)
     }};
 }
@@ -764,8 +765,7 @@ macro_rules! log {
         };
         if $crate::logger::global_has_loggers() {
             let path = this_file!();
-            let root = $crate::logger::root();
-            let root = root.read();
+            let root = $crate::logger::ROOT.read();
             if root.get_level(path, line!()) <= $level {
                 root.log(&RECORD, format_args!($($arg)*));
             }
