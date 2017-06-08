@@ -118,3 +118,6 @@ pub mod handlers;
 
 /// Collection of log record formatters.
 pub mod formatters;
+
+#[doc(hidden)]
+pub mod global;

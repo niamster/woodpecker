@@ -25,8 +25,8 @@ extern crate thread_id;
 
 use std::mem;
 use std::sync::{Arc, Once, ONCE_INIT};
-use std::sync::atomic::{AtomicIsize, AtomicUsize, AtomicBool, Ordering,
-                        ATOMIC_ISIZE_INIT, ATOMIC_USIZE_INIT, ATOMIC_BOOL_INIT};
+use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering,
+                        ATOMIC_USIZE_INIT, ATOMIC_BOOL_INIT};
 use std::collections::BTreeMap;
 use std::collections::Bound::{Included, Excluded, Unbounded};
 use std::time::{Duration, Instant};
@@ -40,11 +40,10 @@ use record::imp::{SyncRecord, AsyncRecord, RecordMeta};
 use line_range::{LineRangeBound, LineRangeSpec};
 use formatters::Formatter;
 use handlers::Handler;
+use global;
 
 const QNUM: usize = 64;
 
-static LOG_LEVEL: AtomicIsize = ATOMIC_ISIZE_INIT;
-static HAS_SUBLOGGERS: AtomicBool = ATOMIC_BOOL_INIT;
 static LOG_THREAD: AtomicBool = ATOMIC_BOOL_INIT;
 static IS_INIT: AtomicBool = ATOMIC_BOOL_INIT;
 lazy_static! {
@@ -159,7 +158,7 @@ impl RootLogger {
         };
         self.loggers.insert(path.to_string(), logger);
 
-        global_set_loggers(true);
+        global::set_loggers(true);
 
         Ok(())
     }
@@ -182,7 +181,7 @@ impl RootLogger {
             }
         }
 
-        global_get_level()
+        global::get_level()
     }
 
     #[doc(hidden)]
@@ -318,8 +317,8 @@ pub fn sync() {
 pub fn reset() {
     sync();
     let mut root = ROOT.write();
-    global_set_level(LogLevel::WARN);
-    global_set_loggers(false);
+    global::set_level(LogLevel::WARN);
+    global::set_loggers(false);
     root.reset();
 }
 
@@ -397,28 +396,6 @@ pub fn init() {
 /// ```
 pub fn init_with_thread() {
     __init(true);
-}
-
-#[doc(hidden)]
-#[inline(always)]
-pub fn global_get_level() -> LogLevel {
-    LogLevel::from(LOG_LEVEL.load(Ordering::Relaxed))
-}
-
-#[doc(hidden)]
-pub fn global_set_level(level: LogLevel) {
-    LOG_LEVEL.store(level.into(), Ordering::Relaxed);
-}
-
-#[doc(hidden)]
-#[inline(always)]
-pub fn global_has_loggers() -> bool {
-    HAS_SUBLOGGERS.load(Ordering::Relaxed)
-}
-
-#[doc(hidden)]
-pub fn global_set_loggers(value: bool) {
-    HAS_SUBLOGGERS.store(value, Ordering::Relaxed);
 }
 
 #[doc(hidden)]
@@ -515,9 +492,9 @@ macro_rules! wp_set_level {
     }};
 
     ($level:expr) => {{
-        $crate::logger::global_set_loggers(false);
+        $crate::global::set_loggers(false);
         __wp_write_root!(reset_loggers());
-        $crate::logger::global_set_level($level);
+        $crate::global::set_level($level);
         let ok: Result<(), String> = Ok(());
         ok
     }};
@@ -581,23 +558,23 @@ macro_rules! wp_set_level {
 #[macro_export]
 macro_rules! wp_get_level {
     (^) => {{
-        $crate::logger::global_get_level()
+        $crate::global::get_level()
     }};
 
     () => {{
-        if $crate::logger::global_has_loggers() {
+        if $crate::global::has_loggers() {
             let path = this_file!();
             __wp_read_root!(get_level(path, line!()))
         } else {
-            $crate::logger::global_get_level()
+            $crate::global::get_level()
         }
     }};
 
     ($logger:expr) => {{
-        if $crate::logger::global_has_loggers() {
+        if $crate::global::has_loggers() {
             __wp_read_root!(get_level($logger, $crate::EOF.into()))
         } else {
-            $crate::logger::global_get_level()
+            $crate::global::get_level()
         }
     }};
 }
@@ -766,14 +743,14 @@ macro_rules! log {
             file: file!(),
             line: line!(),
         };
-        if $crate::logger::global_has_loggers() {
+        if $crate::global::has_loggers() {
             let path = this_file!();
             let root = $crate::logger::ROOT.read();
             if root.get_level(path, line!()) <= $level {
                 root.log(&RECORD, format_args!($($arg)*));
             }
         } else {
-            if $crate::logger::global_get_level() <= $level {
+            if $crate::global::get_level() <= $level {
                 __wp_read_root!(log(&RECORD, format_args!($($arg)*)));
             }
         }
