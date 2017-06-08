@@ -37,20 +37,20 @@ impl From<LineRangeBound> for u32 {
 
 #[doc(hidden)]
 #[derive(Clone)]
-pub struct LineRange {
+pub struct LineRangeSpec {
     pub level: LogLevel,
     pub from: u32,
     pub to: u32,
 }
 
-impl LineRange {
+impl LineRangeSpec {
     #[doc(hidden)]
     #[inline(always)]
     pub fn new(level: LogLevel, from: u32, to: u32) -> Result<Self, String> {
         if from > to {
             Err(format!("Invalid range [{}; {}]", from, to))
         } else {
-            Ok(LineRange {
+            Ok(LineRangeSpec {
                 level: level,
                 from: from,
                 to: to,
@@ -59,7 +59,7 @@ impl LineRange {
     }
 }
 
-impl fmt::Debug for LineRange {
+impl fmt::Debug for LineRangeSpec {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "[{}; {}]", self.from, self.to)
@@ -67,9 +67,9 @@ impl fmt::Debug for LineRange {
 }
 
 #[doc(hidden)]
-pub fn prepare_ranges(level: LogLevel, lranges: &[(u32, u32)]) -> Result<Vec<LineRange>, String> {
+pub fn prepare_ranges(level: LogLevel, lranges: &[(u32, u32)]) -> Result<Vec<LineRangeSpec>, String> {
     let (lranges, fails): (Vec<_>, Vec<_>) = lranges.iter()
-        .map(|&(from, to)| LineRange::new(level, from, to))
+        .map(|&(from, to)| LineRangeSpec::new(level, from, to))
         .partition(Result::is_ok);
     if !fails.is_empty() {
         let err = fails.first().unwrap().clone();

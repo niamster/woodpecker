@@ -37,7 +37,7 @@ use std::env;
 use levels::LogLevel;
 use record::Record;
 use record::imp::{SyncRecord, AsyncRecord, RecordMeta};
-use line_range::{LineRangeBound, LineRange};
+use line_range::{LineRangeBound, LineRangeSpec};
 use formatters::Formatter;
 use handlers::Handler;
 
@@ -67,17 +67,17 @@ macro_rules! wp_separator {
     () => ('@')
 }
 
-struct LevelMeta {
-    level: LogLevel,
-    lranges: Vec<LineRange>,
-}
-
 type QProducers = [Mutex<chase_lev::Worker<AsyncRecord>>; QNUM];
 type QConsumers = [chase_lev::Stealer<AsyncRecord>; QNUM];
 
+struct ModuleSpec {
+    level: LogLevel,
+    lranges: Vec<LineRangeSpec>,
+}
+
 #[doc(hidden)]
 pub struct RootLogger {
-    loggers: CachePadded<BTreeMap<String, LevelMeta>>,
+    loggers: CachePadded<BTreeMap<String, ModuleSpec>>,
     formatter: Arc<Formatter>,
     handlers: Vec<Handler>,
     producers: QProducers,
@@ -131,7 +131,7 @@ impl RootLogger {
     }
 
     #[doc(hidden)]
-    pub fn set_level(&mut self, level: LogLevel, path: &str, lranges: Vec<LineRange>) -> Result<(), String> {
+    pub fn set_level(&mut self, level: LogLevel, path: &str, lranges: Vec<LineRangeSpec>) -> Result<(), String> {
         if level == LogLevel::UNSUPPORTED {
             return Err("Unsupported log level".to_string());
         }
@@ -153,7 +153,7 @@ impl RootLogger {
 
         self.remove_children(path);
 
-        let logger = LevelMeta {
+        let logger = ModuleSpec {
             level: level,
             lranges: lranges,
         };
