@@ -219,7 +219,7 @@ fn qempty() -> bool {
     sent == received
 }
 
-fn lthread(root: Arc<RwLock<RootLogger>>, consumers: QConsumers) {
+fn lthread(root: Arc<RwLock<RootLogger>>, consumers: &QConsumers) {
     const BWAIT_MS: u64 = 10;
     #[cfg(not(test))] const RWAIT_MS: u64 = 500;
     #[cfg(test)] const RWAIT_MS: u64 = 10;
@@ -284,7 +284,7 @@ fn root() -> Arc<RwLock<RootLogger>> {
             if LOG_THREAD.load(Ordering::Relaxed) {
                 let root = root.clone();
                 thread::spawn(move || {
-                    lthread(root, consumers);
+                    lthread(root, &consumers);
                 });
                 { // warm up lazy statics
                     sync();
