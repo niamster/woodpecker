@@ -49,7 +49,5 @@ pub trait Record: Send + Sync {
     fn ts_utc(&self) -> Arc<DateTime<UTC>>;
 }
 
-// TODO: use pub(crate) when stabilized (should in v1.18)
-// https://github.com/rust-lang/rust/issues/32409
 #[doc(hidden)]
 pub mod imp;

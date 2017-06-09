@@ -126,10 +126,8 @@ impl RecordLazyMeta {
     }
 }
 
-// TODO: use pub(crate) when stabilized (should in v1.18)
-// https://github.com/rust-lang/rust/issues/32409
 #[doc(hidden)]
-pub struct SyncRecord<'a> {
+pub(crate) struct SyncRecord<'a> {
     irecord: &'static RecordMeta,
     args: fmt::Arguments<'a>,
     precord: Arc<RecordLazyMeta>,
@@ -137,11 +135,9 @@ pub struct SyncRecord<'a> {
 }
 
 impl<'a> SyncRecord<'a> {
-    // TODO: use pub(crate) when stabilized (should in v1.18)
-    // https://github.com/rust-lang/rust/issues/32409
     #[doc(hidden)]
     #[inline(always)]
-    pub fn new(record: &'static RecordMeta,
+    pub(crate) fn new(record: &'static RecordMeta,
                ts: time::Timespec,
                args: fmt::Arguments<'a>,
                formatter: Arc<Formatter>) -> Self {
@@ -193,10 +189,8 @@ impl<'a> Record for SyncRecord<'a> {
     }
 }
 
-// TODO: use pub(crate) when stabilized (should in v1.18)
-// https://github.com/rust-lang/rust/issues/32409
 #[doc(hidden)]
-pub struct AsyncRecord {
+pub(crate) struct AsyncRecord {
     irecord: &'static RecordMeta,
     msg: Arc<String>,
     precord: Arc<RecordLazyMeta>,
