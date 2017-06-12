@@ -18,7 +18,7 @@ use self::serde_json::Value;
 use std;
 
 use levels::LogLevel;
-use line_range::{LineRangeSpec, prepare_ranges};
+use line_range::{LineRangeSpec, LineRangeError, prepare_ranges};
 
 #[derive(PartialEq, PartialOrd, Clone, Debug)]
 struct Module {
@@ -36,7 +36,7 @@ impl Module {
         }
     }
 
-    fn with_lranges(path: &str, level: LogLevel, lranges: &Vec<(u32, u32)>) -> Result<Self, String> {
+    fn with_lranges(path: &str, level: LogLevel, lranges: &Vec<(u32, u32)>) -> Result<Self, LineRangeError> {
         Ok(Module {
             path: path.to_string(),
             level: None,
@@ -99,8 +99,6 @@ pub enum ParseError {
     Spec,
     /// Invalid log level
     LogLevel,
-    /// Invalid line range
-    LineRange(String),
     /// JSON parse error
     Json(JsonError),
 }

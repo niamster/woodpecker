@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use std;
-use std::fmt;
 
 use levels::LogLevel;
 
@@ -36,19 +35,25 @@ impl From<LineRangeBound> for u32 {
 }
 
 #[doc(hidden)]
-#[derive(PartialEq, PartialOrd, Clone, Copy)]
+#[derive(PartialEq, PartialOrd, Clone, Copy, Debug)]
 pub struct LineRangeSpec {
     pub level: LogLevel,
     pub from: u32,
     pub to: u32,
 }
 
+#[doc(hidden)]
+#[derive(PartialEq, PartialOrd, Clone, Copy, Debug)]
+pub enum LineRangeError {
+    InvalidRange(u32, u32),
+}
+
 impl LineRangeSpec {
     #[doc(hidden)]
     #[inline(always)]
-    pub fn new(level: LogLevel, from: u32, to: u32) -> Result<Self, String> {
+    pub fn new(level: LogLevel, from: u32, to: u32) -> Result<Self, LineRangeError> {
         if from > to {
-            Err(format!("Invalid range [{}; {}]", from, to))
+            Err(LineRangeError::InvalidRange(from, to))
         } else {
             Ok(LineRangeSpec {
                 level: level,
@@ -59,15 +64,16 @@ impl LineRangeSpec {
     }
 }
 
-impl fmt::Debug for LineRangeSpec {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[{}; {}]", self.from, self.to)
+impl ToString for LineRangeError {
+    fn to_string(&self) -> String {
+        match *self {
+            LineRangeError::InvalidRange(from, to) => format!("Invalid range [{}; {}]", from, to),
+        }
     }
 }
 
 #[doc(hidden)]
-pub fn prepare_ranges(level: LogLevel, lranges: &[(u32, u32)]) -> Result<Vec<LineRangeSpec>, String> {
+pub fn prepare_ranges(level: LogLevel, lranges: &[(u32, u32)]) -> Result<Vec<LineRangeSpec>, LineRangeError> {
     let (lranges, fails): (Vec<_>, Vec<_>) = lranges.iter()
         .map(|&(from, to)| LineRangeSpec::new(level, from, to))
         .partition(Result::is_ok);
