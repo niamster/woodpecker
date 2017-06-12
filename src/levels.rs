@@ -13,6 +13,8 @@
 // limitations under the License.
 
 use std::fmt;
+use std::str::FromStr;
+use std::collections::HashMap;
 
 /// The logging levels.
 #[derive(PartialEq, PartialOrd, Clone, Copy, Debug)]
@@ -75,7 +77,6 @@ impl From<isize> for LogLevel {
 }
 
 // NOTE: `LOG` level should not be included here
-#[cfg(test)]
 #[doc(hidden)]
 pub(crate) const LEVELS: [LogLevel; 8] = [
     LogLevel::TRACE,
@@ -87,6 +88,28 @@ pub(crate) const LEVELS: [LogLevel; 8] = [
     LogLevel::ERROR,
     LogLevel::CRITICAL
 ];
+
+lazy_static! {
+    static ref LMAP: HashMap<String, LogLevel> = {
+        let mut levels = HashMap::with_capacity(LEVELS.len());
+        for level in &LEVELS {
+            levels.insert(level.to_string().to_uppercase(), *level);
+        }
+        levels
+    };
+}
+
+impl FromStr for LogLevel {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some(level) = LMAP.get(&s.to_uppercase()) {
+            Ok(*level)
+        } else {
+            Err(())
+        }
+    }
+}
 
 impl fmt::Display for LogLevel {
     #[inline]

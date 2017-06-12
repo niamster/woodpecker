@@ -166,10 +166,11 @@ impl RootLogger {
     #[doc(hidden)]
     #[inline(always)]
     pub fn get_level(&self, path: &str, line: u32) -> LogLevel {
+        let eof: u32 = LineRangeBound::EOF.into();
         let range = self.loggers.range::<str, _>((Unbounded, Included(path)));
         for (name, logger) in range.rev() {
             if path.starts_with(name) {
-                if line == LineRangeBound::EOF.into() || logger.lranges.is_empty() {
+                if line == eof || logger.lranges.is_empty() {
                     return logger.level;
                 }
                 for range in &logger.lranges {
@@ -1266,7 +1267,7 @@ mod tests {
                 fold(0, |acc, ref val| {
                     acc + val.parse::<u32>().unwrap()
                 });
-            let expected = (0..100).filter(|x| x % 2 == 0).sum();
+            let expected: u32 = (0..100).filter(|x| x % 2 == 0).sum();
             assert_eq!(sum, expected);
         });
     }

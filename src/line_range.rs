@@ -36,7 +36,7 @@ impl From<LineRangeBound> for u32 {
 }
 
 #[doc(hidden)]
-#[derive(Clone)]
+#[derive(PartialEq, PartialOrd, Clone, Copy)]
 pub struct LineRangeSpec {
     pub level: LogLevel,
     pub from: u32,
@@ -82,9 +82,10 @@ pub fn prepare_ranges(level: LogLevel, lranges: &[(u32, u32)]) -> Result<Vec<Lin
     // FIXME: merge the ranges
 
     if lranges.len() == 1 {
+        let bof: u32 = LineRangeBound::BOF.into();
+        let eof: u32 = LineRangeBound::EOF.into();
         let first = lranges.first().unwrap().clone();
-        if first.from == LineRangeBound::BOF.into()
-            && first.to == LineRangeBound::EOF.into() {
+        if first.from == bof && first.to == eof {
             lranges.clear();
         }
     }

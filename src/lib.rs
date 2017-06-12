@@ -121,3 +121,6 @@ pub mod formatters;
 
 #[doc(hidden)]
 pub mod global;
+
+#[doc(hidden)]
+pub mod parser;
