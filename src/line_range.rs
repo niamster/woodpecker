@@ -78,7 +78,7 @@ pub fn prepare_ranges(level: LogLevel, lranges: &[(u32, u32)]) -> Result<Vec<Lin
         .map(|&(from, to)| LineRangeSpec::new(level, from, to))
         .partition(Result::is_ok);
     if !fails.is_empty() {
-        let err = fails.first().unwrap().clone();
+        let err = *fails.first().unwrap();
         return Err(err.unwrap_err());
     }
 
@@ -90,7 +90,7 @@ pub fn prepare_ranges(level: LogLevel, lranges: &[(u32, u32)]) -> Result<Vec<Lin
     if lranges.len() == 1 {
         let bof: u32 = LineRangeBound::BOF.into();
         let eof: u32 = LineRangeBound::EOF.into();
-        let first = lranges.first().unwrap().clone();
+        let first = *lranges.first().unwrap();
         if first.from == bof && first.to == eof {
             lranges.clear();
         }
