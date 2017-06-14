@@ -427,6 +427,11 @@ macro_rules! __wp_read_root {
 /// be given.
 /// In this case the full path to the file must be provided.
 ///
+/// The logger spec might also be either [env_logger](https://doc.rust-lang.org/log/env_logger) spec or
+/// a JSON string which defines global and per-module log level.
+///
+/// See documentation of the [spec](spec) module for the details.
+///
 /// See documentation for the [wp_get_level](macro.wp_get_level.html)
 /// for more details on the log level hierarchy.
 ///
@@ -462,6 +467,36 @@ macro_rules! __wp_read_root {
 ///
 ///     wp_set_level!(wp::LogLevel::TRACE, this_file!(), [(wp::BOF, wp::EOF)]).unwrap();
 ///     assert_eq!(wp_get_level!(), wp::LogLevel::TRACE);
+///
+///     let spec = format!(r#"{{
+///                     "level": "debug",
+///                     "modules": [
+///                         {{
+///                             "path": "foo"
+///                         }},
+///                         {{
+///                             "path": "{}",
+///                             "level": "notice"
+///                         }},
+///                         {{
+///                             "path": "{}",
+///                             "level": "critical",
+///                             "lines": [[{}, {}]]
+///                         }}
+///                     ]
+///                 }}"#,
+///             this_file!(), this_file!(), line!() + 4, line!() + 100);
+///     wp_set_level!(spec(&spec)).unwrap();
+///     assert_eq!(wp_get_level!(^), wp::LogLevel::DEBUG);
+///     assert_eq!(wp_get_level!(), wp::LogLevel::NOTICE);
+///     assert_eq!(wp_get_level!("foo"), wp::LogLevel::TRACE);
+///     assert_eq!(wp_get_level!(), wp::LogLevel::CRITICAL);
+///
+///     let spec = format!("critical,{},foo=info", this_file!());
+///     wp_set_level!(spec(&spec)).unwrap();
+///     assert_eq!(wp_get_level!(^), wp::LogLevel::CRITICAL);
+///     assert_eq!(wp_get_level!(), wp::LogLevel::TRACE);
+///     assert_eq!(wp_get_level!("foo"), wp::LogLevel::INFO);
 /// }
 ///
 /// ```
@@ -490,6 +525,27 @@ macro_rules! wp_set_level {
 
     ($level:expr, $logger:expr) => {{
         __wp_write_root!(set_level($level, $logger, Vec::new()))
+    }};
+
+    (spec($spec:expr)) => {{
+        match $crate::spec::parse($spec) {
+            Ok(spec) => {
+                if let Some(level) = spec.level {
+                    let _ = wp_set_level!(level);
+                }
+                || -> Result<(), String> {
+                    for module in &spec.modules {
+                        if let Some(lranges) = module.lranges.as_ref() {
+                            wp_set_level!(module.level, &module.path, lranges)?;
+                        } else {
+                            wp_set_level!(module.level, &module.path)?;
+                        }
+                    }
+                    Ok(())
+                }()
+            },
+            Err(err) => Err(err.to_string())
+        }
     }};
 
     ($level:expr) => {{

@@ -12,44 +12,103 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! The logger spec might also be either [env_logger](https://doc.rust-lang.org/log/env_logger) spec or
+//! a JSON string which defines global and per-module log level.
+//!
+//! # Simple env_logger spec
+//!
+//! The [env_logger](https://doc.rust-lang.org/log/env_logger/#enabling-logging) spec defines
+//! the way to set global logging level or on per module basis.
+//!
+//! The spec string has a form of:
+//!
+//! ```ignore
+//! [level],[module=[level]],...
+//! ```
+//!
+//! The level must be a valid logging [level](levels/enum.LogLevel.html) level in the range
+//! from [TRACE](levels/enum.LogLevel.html) to [CRITICAL](levels/enum.LogLevel.html).
+//!
+//! If `level` doesn't match any known logging level it's treated as a module path.
+//!
+//! In this case if `level` is not specified the log level is set to [TRACE](levels/enum.LogLevel.html).
+//!
+//! # Extended JSON spec
+//!
+//! The JSON logging spec allows to specify a fine grained logging settings.
+//!
+//! It doesn't suffer from the issue when module or crate path match the logging level.
+//!
+//! Also it allows to define logging level for the ranges of lines and potentially define other
+//! features supported by `woodpecker`.
+//!
+//! The definition of the JSON spec:
+//!
+//! ```json
+//! {
+//!     "level": "<global logging level>",
+//!     "modules": [
+//!         {
+//!             "path": "<path to the module>",
+//!             "level": "<module logging level>"
+//!         },
+//!         {
+//!             "path": "<path to the module>",
+//!             "lines": [[<from>, <to>], [<from>, <to>]]
+//!         }
+//!     ]
+//! }
+//! ```
+//!
+//! If the global level is not specified then it's left untouched.
+//!
+//! The `path` field of the module object is mandatory.
+//! While the `level` and `lines` fields are optional.
+//!
+//! If module `level` is not specified then it defaults to [TRACE](levels/enum.LogLevel.html).
+//!
+//! See documentation for the [wp_set_level](../macro.wp_set_level.html)
+//! for examples.
+
+
 extern crate serde_json;
 use self::serde_json::Value;
 
 use std;
 
 use levels::LogLevel;
-use line_range::{LineRangeSpec, LineRangeError, prepare_ranges};
 
+#[doc(hidden)]
 #[derive(PartialEq, PartialOrd, Clone, Debug)]
-struct Module {
-    path: String,
-    level: Option<LogLevel>,
-    lranges: Option<Vec<LineRangeSpec>>,
+pub struct Module {
+    pub path: String,
+    pub level: LogLevel,
+    pub lranges: Option<Vec<(u32, u32)>>,
 }
 
 impl Module {
     fn with_level(path: &str, level: LogLevel) -> Self {
         Module {
             path: path.to_string(),
-            level: Some(level),
+            level: level,
             lranges: None,
         }
     }
 
-    fn with_lranges(path: &str, level: LogLevel, lranges: &Vec<(u32, u32)>) -> Result<Self, LineRangeError> {
-        Ok(Module {
+    fn with_lranges(path: &str, level: LogLevel, lranges: Vec<(u32, u32)>) -> Self {
+        Module {
             path: path.to_string(),
-            level: None,
-            lranges: Some(prepare_ranges(level, &lranges)?),
-        })
+            level: level,
+            lranges: Some(lranges),
+        }
     }
 }
 
 #[doc(hidden)]
 #[derive(PartialEq, PartialOrd, Clone, Debug)]
 pub struct Root {
-    level: Option<LogLevel>,
-    modules: Vec<Module>,
+    pub level: Option<LogLevel>,
+    pub modules: Vec<Module>,
 }
 
 impl Root {
@@ -101,6 +160,12 @@ pub enum ParseError {
     LogLevel,
     /// JSON parse error
     Json(JsonError),
+}
+
+impl ToString for ParseError {
+    fn to_string(&self) -> String {
+        format!("{:?}", self)
+    }
 }
 
 fn parse_json(json: &str) -> Result<Root, ParseError> {
@@ -167,8 +232,7 @@ fn parse_json(json: &str) -> Result<Root, ParseError> {
                     }
                     lranges.push((from as u32, to as u32));
                 }
-                Module::with_lranges(path, level, &lranges)
-                    .or(Err(ParseError::Json(JsonError::LineRange)))?
+                Module::with_lranges(path, level, lranges)
             } else {
                 Module::with_level(path, level)
             };
@@ -222,6 +286,7 @@ fn parse_token(root: &mut Root, token: &str) -> Result<(), ParseError> {
     Ok(())
 }
 
+#[doc(hidden)]
 pub fn parse(spec: &str) -> Result<Root, ParseError> {
     let spec = spec.trim();
     if spec.is_empty() {
@@ -288,7 +353,7 @@ mod tests {
             .module(Module::with_level("foo", LogLevel::TRACE))
             .module(Module::with_level("bar", LogLevel::TRACE))
             .module(Module::with_lranges("bar", LogLevel::ERROR,
-                                       &vec!((10, 100), (120, 130))).unwrap());
+                                       vec!((10, 100), (120, 130))));
         assert_eq!(Ok(expect), parse(r#"{
                                             "level": "critical",
                                             "modules": [
@@ -339,7 +404,5 @@ mod tests {
                    parse(r#"{"modules": [{"path": "bar", "lines": [[1]]}]}"#));
         assert_eq!(Err(ParseError::Json(JsonError::LineRange)),
                    parse(r#"{"modules": [{"path": "bar", "lines": [[1, 10, 20]]}]}"#));
-        assert_eq!(Err(ParseError::Json(JsonError::LineRange)),
-                   parse(r#"{"modules": [{"path": "bar", "lines": [[10, 1]]}]}"#));
     }
 }
