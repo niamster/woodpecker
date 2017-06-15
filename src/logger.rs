@@ -323,24 +323,10 @@ pub fn reset() {
     root.reset();
 }
 
-fn __init(log_thread: bool) {
-    let log_thread = match env::var("WP_LOG_THREAD") {
-        Ok(ref val) => {
-            let val = &val.to_lowercase()[..1];
-            val == "y" || val == "1"
-        }
-        _ => log_thread,
-    };
-    LOG_THREAD.store(log_thread, Ordering::Relaxed);
-
-    // NOTE: it's not a real guard.
-    // The `init` function is supposed to be called once on init.
-    assert!(!IS_INIT.swap(true, Ordering::Relaxed));
-
-    reset();
-}
-
 /// Initializes the crate's kitchen.
+///
+/// Takes into account `RUST_LOG` environment variable
+/// which must conform to the [spec](spec).
 ///
 /// # Example
 ///
@@ -998,6 +984,27 @@ macro_rules! in_critical {
         if wp_get_level!() <= $crate::LogLevel::CRITICAL {
             $block;
         }
+    }
+}
+
+fn __init(log_thread: bool) {
+    let log_thread = match env::var("WP_LOG_THREAD") {
+        Ok(ref val) => {
+            let val = &val.to_lowercase()[..1];
+            val == "y" || val == "1"
+        }
+        _ => log_thread,
+    };
+    LOG_THREAD.store(log_thread, Ordering::Relaxed);
+
+    // NOTE: it's not a real guard.
+    // The `init` function is supposed to be called once on init.
+    assert!(!IS_INIT.swap(true, Ordering::Relaxed));
+
+    reset();
+
+    if let Ok(ref rust_log) = env::var("RUST_LOG") {
+        wp_set_level!(spec(rust_log)).unwrap();
     }
 }
 
