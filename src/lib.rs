@@ -91,7 +91,7 @@ extern crate lazy_static;
 
 #[doc(hidden)]
 #[macro_use]
-pub mod helpers;
+pub mod macros;
 
 /// Definition of the log levels.
 pub mod levels;

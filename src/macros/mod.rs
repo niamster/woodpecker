@@ -13,13 +13,17 @@
 // limitations under the License.
 
 #[doc(hidden)]
-#[macro_export]
-macro_rules! this_file {
-    () => (concat!(module_path!(), wp_separator!(), file!()))
-}
+#[macro_use]
+pub mod misc;
 
 #[doc(hidden)]
-#[macro_export]
-macro_rules! this_module {
-    () => (module_path!())
-}
+#[macro_use]
+pub mod helpers;
+
+#[doc(hidden)]
+#[macro_use]
+pub mod control;
+
+#[doc(hidden)]
+#[macro_use]
+pub mod logging;
