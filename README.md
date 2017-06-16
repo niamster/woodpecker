@@ -37,6 +37,7 @@ The main feature is almost zero overhead if no filtering rules are defined and l
 
 Currently supported:
 * pluggable format function
+* definition of the logging rules via `RUST_LOG` environment variable
 * multiple log consumers
 * filtering by module (any part of the module path)
 * filtering by file (any part of the file path)
@@ -67,6 +68,15 @@ In your `main.rs`:
 ```rust
 #[macro_use]
 extern crate woodpecker;
+use woodpecker as wp;
+
+fn main() {
+    wp::init();
+
+    wp_set_level!(wp::LogLevel::INFO).unwrap();
+
+    info!("It's alive!");
+}
 ```
 
 See [examples/basic.rs](https://github.com/niamster/woodpecker/blob/master/examples/basic.rs) for the quick overview.

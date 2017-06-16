@@ -50,7 +50,9 @@
 //! fn main() {
 //!     wp::init();
 //!
-//!     warn!("It's alive!");
+//!     wp_set_level!(wp::LogLevel::INFO).unwrap();
+//!
+//!     info!("It's alive!");
 //! }
 //! ```
 //!
