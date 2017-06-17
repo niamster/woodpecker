@@ -13,12 +13,12 @@
 // limitations under the License.
 
 extern crate parking_lot;
-use self::parking_lot::{RwLock, Mutex};
+use self::parking_lot::RwLock;
 
 extern crate time;
 
 extern crate crossbeam;
-use self::crossbeam::sync::chase_lev;
+use self::crossbeam::sync::SegQueue;
 use self::crossbeam::mem::CachePadded;
 
 extern crate thread_id;
@@ -58,8 +58,7 @@ lazy_static! {
     static ref RECEIVED: CachePadded<AtomicUsize> = CachePadded::new(ATOMIC_USIZE_INIT);
 }
 
-type QProducers = [Mutex<chase_lev::Worker<AsyncRecord>>; QNUM];
-type QConsumers = [chase_lev::Stealer<AsyncRecord>; QNUM];
+type QVec = [SegQueue<AsyncRecord>; QNUM];
 
 struct ModuleSpec {
     level: LogLevel,
@@ -71,16 +70,16 @@ pub struct RootLogger {
     loggers: CachePadded<BTreeMap<String, ModuleSpec>>,
     formatter: Arc<Formatter>,
     handlers: Vec<Handler>,
-    producers: QProducers,
+    queue: Arc<QVec>,
 }
 
 impl RootLogger {
-    fn new(producers: QProducers) -> Self {
+    fn new(queue: Arc<QVec>) -> Self {
         RootLogger {
             loggers: CachePadded::new(BTreeMap::new()),
             formatter: Arc::new(Box::new(::formatters::default::formatter)),
             handlers: Vec::new(),
-            producers: producers,
+            queue: queue,
         }
     }
 
@@ -186,10 +185,7 @@ impl RootLogger {
             let record: AsyncRecord = record.into();
             let qidx = thread_id::get() % QNUM;
             assert!(qidx < QNUM);
-            {
-                let mut producer = self.producers[qidx].lock();
-                producer.push(record);
-            }
+            self.queue[qidx].push(record);
             SENT[qidx].fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -212,7 +208,7 @@ fn qempty() -> bool {
     sent == received
 }
 
-fn lthread(root: Arc<RwLock<RootLogger>>, consumers: &QConsumers) {
+fn lthread(root: Arc<RwLock<RootLogger>>, queues: Arc<QVec>) {
     const BWAIT_MS: u64 = 10;
     #[cfg(not(test))] const RWAIT_MS: u64 = 500;
     #[cfg(test)] const RWAIT_MS: u64 = 10;
@@ -236,8 +232,8 @@ fn lthread(root: Arc<RwLock<RootLogger>>, consumers: &QConsumers) {
 
         loop {
             let mut received: usize = 0;
-            for consumer in consumers.iter() {
-                if let chase_lev::Steal::Data(record) = consumer.steal() {
+            for queue in queues.iter() {
+                if let Some(record) = queue.try_pop() {
                     {
                         let root = root.read();
                         root.process(&record);
@@ -261,23 +257,20 @@ fn root() -> Arc<RwLock<RootLogger>> {
     static ONCE: Once = ONCE_INIT;
     unsafe {
         ONCE.call_once(|| {
-            let mut producers: QProducers = mem::uninitialized();
-            let mut consumers: QConsumers = mem::uninitialized();
-            for idx in 0..QNUM {
-                let (worker, stealer) = chase_lev::deque();
-                let z = mem::replace(&mut producers[idx], Mutex::new(worker));
-                mem::forget(z);
-                let z = mem::replace(&mut consumers[idx], stealer);
+            let mut queues: QVec = mem::uninitialized();
+            for queue in queues.iter_mut() {
+                let z = mem::replace(queue, SegQueue::new());
                 mem::forget(z);
             }
+            let queues = Arc::new(queues);
 
             assert!(IS_INIT.load(Ordering::Relaxed));
-            let root = Arc::new(RwLock::new(RootLogger::new(producers)));
+            let root = Arc::new(RwLock::new(RootLogger::new(queues.clone())));
 
             if LOG_THREAD.load(Ordering::Relaxed) {
                 let root = root.clone();
                 thread::spawn(move || {
-                    lthread(root, &consumers);
+                    lthread(root, queues);
                 });
                 { // warm up lazy statics
                     sync();
