@@ -47,11 +47,11 @@ struct RecordLazyMetaInner {
 }
 
 #[inline(always)]
-fn format(args: fmt::Arguments) -> Arc<String> {
+fn format(args: fmt::Arguments) -> String {
     let mut mstr = String::with_capacity(PREALLOC);
     // Should check for formatting failure, although it's quite expensive.
     let _ = mstr.write_fmt(args);
-    Arc::new(mstr)
+    mstr
 }
 
 impl RecordLazyMetaInner {
@@ -66,7 +66,13 @@ impl RecordLazyMetaInner {
 
     fn mk_msg<'a>(&mut self, args: fmt::Arguments<'a>) {
         if self.msg.is_none() {
-            self.msg = Some(format(args));
+            self.msg = Some(Arc::new(format(args)));
+        }
+    }
+
+    fn mk_msg_str(&mut self, msg: &String) {
+        if self.msg.is_none() {
+            self.msg = Some(Arc::new(msg.clone()));
         }
     }
 
@@ -95,6 +101,13 @@ impl RecordLazyMeta {
     fn msg<'a>(&self, args: fmt::Arguments<'a>) -> Arc<String> {
         let mut irecord = self.irecord.lock();
         irecord.mk_msg(args);
+        let msg = irecord.msg.as_ref().unwrap();
+        msg.clone()
+    }
+
+    fn msg_str(&self, msg: &String) -> Arc<String> {
+        let mut irecord = self.irecord.lock();
+        irecord.mk_msg_str(msg);
         let msg = irecord.msg.as_ref().unwrap();
         msg.clone()
     }
@@ -130,7 +143,7 @@ impl RecordLazyMeta {
 pub(crate) struct SyncRecord<'a> {
     irecord: &'static RecordMeta,
     args: fmt::Arguments<'a>,
-    precord: Arc<RecordLazyMeta>,
+    precord: RecordLazyMeta,
     ts: time::Timespec,
 }
 
@@ -145,7 +158,7 @@ impl<'a> SyncRecord<'a> {
             irecord: record,
             ts: ts,
             args: args,
-            precord: Arc::new(RecordLazyMeta::new(formatter)),
+            precord: RecordLazyMeta::new(formatter),
         }
     }
 }
@@ -192,8 +205,8 @@ impl<'a> Record for SyncRecord<'a> {
 #[doc(hidden)]
 pub(crate) struct AsyncRecord {
     irecord: &'static RecordMeta,
-    msg: Arc<String>,
-    precord: Arc<RecordLazyMeta>,
+    msg: String,
+    precord: RecordLazyMeta,
     ts: time::Timespec,
 }
 
@@ -224,7 +237,7 @@ impl Record for AsyncRecord {
     }
 
     fn msg(&self) -> Arc<String> {
-        self.msg.clone()
+        self.precord.msg_str(&self.msg)
     }
 
     fn formatted(&self) -> Arc<String> {
