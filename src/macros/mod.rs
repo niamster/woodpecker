@@ -12,22 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[doc(hidden)]
 #[macro_use]
 pub mod misc;
 
-#[doc(hidden)]
 #[macro_use]
 pub mod helpers;
 
-#[doc(hidden)]
 #[macro_use]
 pub mod control;
 
-#[doc(hidden)]
 #[macro_use]
 pub mod logging;
 
-#[doc(hidden)]
 #[macro_use]
 pub mod init;

@@ -24,7 +24,7 @@
 /// The logger spec might also be either [env_logger](https://doc.rust-lang.org/log/env_logger) spec or
 /// a JSON string which defines global and per-module log level.
 ///
-/// See documentation of the [spec](spec) module for the details.
+/// See documentation of the [spec](spec/index.html) module for the details.
 ///
 /// See documentation for the [wp_get_level](macro.wp_get_level.html)
 /// for more details on the log level hierarchy.
@@ -288,7 +288,7 @@ macro_rules! wp_register_handler {
 /// A [default](formatters/default/fn.formatter.html) formatter is used if not set explicitly.
 ///
 /// The formatter function takes a log record as an argument and returns a string
-/// that will be used as a return value of [Record::formatted](record/struct.Record.html#method.formatted) function.
+/// that will be used as a return value of [Record::formatted](record/trait.Record.html#tymethod.formatted) function.
 ///
 /// See the definition of the [Formatter](formatters/type.Formatter.html) type for the details.
 ///

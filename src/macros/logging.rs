@@ -40,11 +40,11 @@
 /// use std::ops::Deref;
 ///
 /// fn main() {
+///     wp_init!();
+///     wp_set_level!(wp::LogLevel::CRITICAL).unwrap();
+///
 ///     let msg = "I'm always visible";
 ///
-///     wp_init!();
-///
-///     wp_set_level!(wp::LogLevel::CRITICAL).unwrap();
 ///     let out = Arc::new(Mutex::new(String::new()));
 ///     {
 ///         let out = out.clone();
@@ -58,9 +58,11 @@
 ///             log!("Not seen though");
 ///         });
 ///     }
+///
 ///     if cfg!(feature = "test-thread-log") {
 ///         wp::sync();
 ///     }
+///
 ///     assert_eq!(*out.lock().unwrap(), format!(">{}<", msg));
 /// }
 ///

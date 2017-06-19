@@ -18,7 +18,7 @@
 /// logging [configuration](struct.Config.html).
 ///
 /// Takes into account `RUST_LOG` environment variable
-/// which must conform to the [spec](spec).
+/// which must conform to the [spec](spec/index.html).
 ///
 /// The `WP_LOG_THREAD` environment variable overrides the passed configuration.
 ///

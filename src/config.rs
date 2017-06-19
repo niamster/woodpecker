@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/// Initial logger configuration
+/// Initial logger configuration.
 #[derive(Default)]
 pub struct Config {
-    /// Log thread switch
+    /// Log thread switch.
     pub thread: bool,
 }

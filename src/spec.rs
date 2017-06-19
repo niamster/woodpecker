@@ -54,18 +54,21 @@
 //!         },
 //!         {
 //!             "path": "<path to the module>",
-//!             "lines": [[<from>, <to>], [<from>, <to>]]
-//!         }
+//!             "lines": [[<from>, <to>], ...]
+//!         },
+//!         ...
 //!     ]
 //! }
 //! ```
 //!
 //! If the global level is not specified then it's left untouched.
 //!
-//! The `path` field of the module object is mandatory.
-//! While the `level` and `lines` fields are optional.
+//! The `path` field of the module object is mandatory while
+//! the `level` and `lines` fields are optional.
 //!
 //! If module `level` is not specified then it defaults to [TRACE](levels/enum.LogLevel.html).
+//!
+//! In case the ranges of lines is omitted the logging for the whole file is defined.
 //!
 //! See documentation for the [wp_set_level](../macro.wp_set_level.html)
 //! for examples.
@@ -134,31 +137,31 @@ impl Root {
     }
 }
 
-/// Represents log spec parse failure
+/// JSON log spec parse failure.
 #[derive(PartialEq, PartialOrd, Clone, Debug)]
 pub enum JsonError {
-    /// Invalid JSON string
+    /// Invalid JSON string.
     Json,
-    /// The root is invalid
+    /// The root is invalid.
     Root,
-    /// The array of modules is invalid
+    /// The array of modules is invalid.
     Module,
-    /// The log level of the root is invalid
+    /// The log level of the root is invalid.
     RootLogLevel,
-    /// The log level of the module is invalid
+    /// The log level of the module is invalid.
     ModuleLogLevel,
-    /// The line range of the module is invalid
+    /// The line range of the module is invalid.
     LineRange,
 }
 
-/// Represents log spec parse failure
+/// Generic log spec parse failure.
 #[derive(PartialEq, PartialOrd, Clone, Debug)]
 pub enum ParseError {
-    /// Invalid spec
+    /// Invalid spec.
     Spec,
-    /// Invalid log level
+    /// Invalid log level.
     LogLevel,
-    /// JSON parse error
+    /// JSON parse error.
     Json(JsonError),
 }
 

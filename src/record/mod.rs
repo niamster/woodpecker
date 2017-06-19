@@ -24,7 +24,7 @@ use levels::LogLevel;
 /// Log record that holds information where log was recorded
 /// and the message details.
 pub trait Record: Send + Sync {
-    /// Log level of the record
+    /// Log level of the record.
     fn level(&self) -> LogLevel;
 
     /// Module path.

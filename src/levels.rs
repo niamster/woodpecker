@@ -19,7 +19,7 @@ use std::collections::HashMap;
 /// The logging levels.
 #[derive(PartialEq, PartialOrd, Clone, Copy, Debug)]
 pub enum LogLevel {
-    /// Used to indicate the unsupported log level.
+    #[doc(hidden)]
     UNSUPPORTED,
     /// Log all messages.
     TRACE,
@@ -37,7 +37,7 @@ pub enum LogLevel {
     ERROR,
     /// Log only critical messages.
     CRITICAL,
-    /// Used for unconditional logging.
+    #[doc(hidden)]
     LOG,
 }
 

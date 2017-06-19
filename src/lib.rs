@@ -16,13 +16,12 @@
 
 //! # Woodpecker - fast and extensible logger for Rust
 //!
-//! The main goal of `woodpecker` is to be incredibly fast for the code
-//! that doesn't generate the log.
+//! The main goal of `woodpecker` is to be incredibly fast, extensible and easy to use.
 //!
 //! Please check out the project [homepage](https://github.com/niamster/woodpecker)
 //! for more details on features, issues and limitation.
 //!
-//! The log levels are assigned in a hierarchical manner.
+//! The log levels are treated in a hierarchical manner.
 //!
 //! If there's no exact match for a requested log then the closest match is used.
 //!
@@ -33,31 +32,17 @@
 //! macros for more details on the hierarchy.
 //!
 //! # Installation
-//! To start using `woodpecker` it's enough to just enable it in your `Cargo.toml`:
+//! To start using `woodpecker` just enable it in your `Cargo.toml`:
 //!
 //! ```toml
 //! [dependencies]
 //! woodpecker = "0.3"
 //! ```
 //!
-//! In your `main.rs`:
-//!
-//! ```rust
-//! #[macro_use]
-//! extern crate woodpecker;
-//! use woodpecker as wp;
-//!
-//! fn main() {
-//!     wp_init!();
-//!
-//!     wp_set_level!(wp::LogLevel::INFO).unwrap();
-//!
-//!     info!("It's alive!");
-//! }
-//! ```
-//!
-//! And start using logging functions as `debug`, `info`, etc. as with
-//! generic rust [logger](https://doc.rust-lang.org/log)
+//! In the very beginning `woodpecker` should be configured using [wp_init](macro.wp_init!.html) macro.
+//! By default [WARN](levels/enum.LogLevel.html) is used.
+//! The usual logging macros as `debug`, `info`, etc. are available
+//! as with generic rust [logger](https://doc.rust-lang.org/log).
 //!
 //! # Example
 //!
@@ -68,8 +53,8 @@
 //!
 //! fn main() {
 //!     wp_init!();
-//!
 //!     wp_set_level!(wp::LogLevel::INFO).unwrap();
+//!
 //!     info!("{} is saying hello", "woodpecker");
 //!     debug!("I'm invisible");
 //! }
@@ -78,15 +63,15 @@
 //!
 //! Woodpecker supports logging in a dedicated thread.
 //!
-//! This frees the application from the latency caused by formatting
-//! the log string and emitting it into a log sink(terminal, file, network, etc.).
+//! This frees the application from the latency caused by the overhead of log string
+//! formatter and the log drain(terminal, file, network, etc.).
 //!
 //! It's important to use [sync](fn.sync.html) in the end of the `main` funtion
 //! to ensure that all log records are properly flushed.
 //!
-//! The logging thread is either activated explicitly by defining a configuration
-//! for the [wp_init](macro.wp_init!.html) macro or by setting
-//! `WP_LOG_THREAD` environment variable which overrides compile-time settings.
+//! The logging thread could be activated via a configuration parameter passed
+//! to the [wp_init](macro.wp_init!.html) macro.
+//! The `WP_LOG_THREAD` environment variable may be used overrides compile-time settings.
 
 #[macro_use]
 extern crate lazy_static;
@@ -118,6 +103,8 @@ pub use logger::{init, sync};
 
 #[doc(hidden)]
 pub mod line_range;
+#[doc(inline)]
+pub use line_range::LineRangeBound;
 pub use line_range::LineRangeBound::{BOF, EOF};
 
 /// Collection of log handlers.
@@ -129,5 +116,5 @@ pub mod formatters;
 #[doc(hidden)]
 pub mod global;
 
-#[doc(hidden)]
+#[doc(inline)]
 pub mod spec;
