@@ -27,3 +27,7 @@ pub mod control;
 #[doc(hidden)]
 #[macro_use]
 pub mod logging;
+
+#[doc(hidden)]
+#[macro_use]
+pub mod init;

@@ -37,7 +37,7 @@
 /// use woodpecker as wp;
 ///
 /// fn main() {
-///     wp::init();
+///     wp_init!();
 ///
 ///     let logger = "foo::bar";
 ///
@@ -177,7 +177,7 @@ macro_rules! wp_set_level {
 /// use woodpecker as wp;
 ///
 /// fn main() {
-///     wp::init();
+///     wp_init!();
 ///
 ///     let logger = "foo::bar";
 ///
@@ -255,7 +255,7 @@ macro_rules! wp_get_level {
 /// use std::ops::Deref;
 ///
 /// fn main() {
-///     wp::init();
+///     wp_init!();
 ///
 ///     warn!("foo");
 ///     let out = Arc::new(Mutex::new(String::new()));
@@ -303,7 +303,7 @@ macro_rules! wp_register_handler {
 /// use std::ops::Deref;
 ///
 /// fn main() {
-///     wp::init();
+///     wp_init!();
 ///
 ///     wp_set_formatter!(Box::new(|record| {
 ///         format!("{}:{}", record.level(), record.msg())

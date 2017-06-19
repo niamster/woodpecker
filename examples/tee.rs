@@ -28,8 +28,7 @@ fn usage() -> ! {
 }
 
 fn main() {
-    wp::init();
-    wp_set_level!(wp::LogLevel::INFO).unwrap();
+    wp_init!();
     wp_register_handler!(wp::handlers::stdout::handler());
     wp_set_formatter!(Box::new(|record| {
         record.msg().deref().clone()
@@ -63,7 +62,7 @@ fn main() {
         let mut buffer = String::new();
         match stdin.read_line(&mut buffer) {
             Ok(count) if count > 0 => {
-                info!("{}", buffer);
+                log!("{}", buffer);
             },
             _ => {
                 break;

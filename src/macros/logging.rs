@@ -42,7 +42,7 @@
 /// fn main() {
 ///     let msg = "I'm always visible";
 ///
-///     wp::init();
+///     wp_init!();
 ///
 ///     wp_set_level!(wp::LogLevel::CRITICAL).unwrap();
 ///     let out = Arc::new(Mutex::new(String::new()));

@@ -48,7 +48,7 @@
 //! use woodpecker as wp;
 //!
 //! fn main() {
-//!     wp::init();
+//!     wp_init!();
 //!
 //!     wp_set_level!(wp::LogLevel::INFO).unwrap();
 //!
@@ -67,7 +67,7 @@
 //! use woodpecker as wp;
 //!
 //! fn main() {
-//!     wp::init();
+//!     wp_init!();
 //!
 //!     wp_set_level!(wp::LogLevel::INFO).unwrap();
 //!     info!("{} is saying hello", "woodpecker");
@@ -84,8 +84,8 @@
 //! It's important to use [sync](fn.sync.html) in the end of the `main` funtion
 //! to ensure that all log records are properly flushed.
 //!
-//! The logging thread is either activated explicitly via
-//! [init_with_thread](fn.init_with_thread.html) function or by setting
+//! The logging thread is either activated explicitly by defining a configuration
+//! for the [wp_init](macro.wp_init!.html) macro or by setting
 //! `WP_LOG_THREAD` environment variable which overrides compile-time settings.
 
 #[macro_use]
@@ -94,6 +94,11 @@ extern crate lazy_static;
 #[doc(hidden)]
 #[macro_use]
 pub mod macros;
+
+#[doc(hidden)]
+pub mod config;
+#[doc(inline)]
+pub use config::Config;
 
 /// Definition of the log levels.
 pub mod levels;
@@ -109,7 +114,7 @@ pub use record::Record;
 #[macro_use]
 pub mod logger;
 #[doc(inline)]
-pub use logger::{init, init_with_thread, sync};
+pub use logger::{init, sync};
 
 #[doc(hidden)]
 pub mod line_range;
@@ -124,4 +129,5 @@ pub mod formatters;
 #[doc(hidden)]
 pub mod global;
 
+#[doc(hidden)]
 pub mod spec;

@@ -12,16 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-#[macro_use]
-extern crate woodpecker;
-use woodpecker as wp;
-
-fn main() {
-    wp_init!();
-
-    wp_set_level!(wp::LogLevel::INFO).unwrap();
-
-    info!("{} is saying hello", "woodpecker");
-    debug!("I'm invisible");
+/// Initial logger configuration
+#[derive(Default)]
+pub struct Config {
+    /// Log thread switch
+    pub thread: bool,
 }

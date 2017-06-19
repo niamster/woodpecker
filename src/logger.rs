@@ -40,6 +40,7 @@ use record::imp::{SyncRecord, AsyncRecord, RecordMeta};
 use line_range::{LineRangeBound, LineRangeSpec};
 use formatters::Formatter;
 use handlers::Handler;
+use config::Config;
 use global;
 
 const QNUM: usize = 64;
@@ -308,75 +309,14 @@ pub fn reset() {
     root.reset();
 }
 
-/// Initializes the crate's kitchen.
-///
-/// Takes into account `RUST_LOG` environment variable
-/// which must conform to the [spec](spec).
-///
-/// # Example
-///
-/// ```rust
-/// #[macro_use]
-/// extern crate woodpecker;
-/// use woodpecker as wp;
-///
-/// fn main() {
-///     wp::init();
-///
-///     wp_set_level!(wp::LogLevel::INFO).unwrap();
-///     info!("Coucou!");
-/// }
-///
-/// ```
-pub fn init() {
-    __init(false);
-}
-
-/// Same as [init](fn.init.html) but enables the log thread.
-///
-/// Consider using [sync](fn.sync.html) to ensure that all log
-/// records are properly flushed.
-///
-/// # Example
-///
-/// ```rust
-/// #[macro_use]
-/// extern crate woodpecker;
-/// use woodpecker as wp;
-///
-/// use std::sync::{Arc, Mutex};
-/// use std::ops::Deref;
-///
-/// fn main() {
-///     wp::init_with_thread();
-///
-///     let out = Arc::new(Mutex::new(String::new()));
-///     {
-///         let out = out.clone();
-///         wp_register_handler!(Box::new(move |record| {
-///             out.lock().unwrap().push_str(record.msg().deref());
-///         }));
-///
-///         warn!("foo");
-///     }
-///
-///     wp::sync();
-///
-///     assert_eq!(*out.lock().unwrap(), "foo".to_string());
-/// }
-///
-/// ```
-pub fn init_with_thread() {
-    __init(true);
-}
-
-fn __init(log_thread: bool) {
+#[doc(hidden)]
+pub fn init(config: Config) {
     let log_thread = match env::var("WP_LOG_THREAD") {
         Ok(ref val) => {
             let val = &val.to_lowercase()[..1];
             val == "y" || val == "1"
         }
-        _ => log_thread,
+        _ => config.thread,
     };
     LOG_THREAD.store(log_thread, Ordering::Relaxed);
 
@@ -412,11 +352,11 @@ mod tests {
 
         let context = unsafe {
             ONCE.call_once(|| {
-                if cfg!(feature = "test-thread-log") {
-                    init_with_thread();
-                } else {
-                    init();
-                }
+                let config = Config {
+                    thread: cfg!(feature = "test-thread-log"),
+                    ..Default::default()
+                };
+                wp_init!(config);
 
                 let context = Arc::new(TContext {
                     lock: Mutex::new(0),
