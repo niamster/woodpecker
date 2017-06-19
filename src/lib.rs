@@ -36,7 +36,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! woodpecker = "0.3"
+//! woodpecker = "0.4"
 //! ```
 //!
 //! In the very beginning `woodpecker` should be configured using [wp_init](macro.wp_init!.html) macro.

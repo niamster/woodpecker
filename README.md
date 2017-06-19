@@ -60,7 +60,7 @@ In Cargo.toml:
 
 ```toml
 [dependencies]
-woodpecker = "0.3"
+woodpecker = "0.4"
 ```
 
 In your `main.rs`:
