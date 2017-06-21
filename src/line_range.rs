@@ -74,6 +74,10 @@ impl ToString for LineRangeError {
 
 #[doc(hidden)]
 pub fn prepare_ranges(level: LogLevel, lranges: &[(u32, u32)]) -> Result<Vec<LineRangeSpec>, LineRangeError> {
+    if lranges.is_empty() {
+        return Ok(Vec::new());
+    }
+
     let (lranges, fails): (Vec<_>, Vec<_>) = lranges.iter()
         .map(|&(from, to)| LineRangeSpec::new(level, from, to))
         .partition(Result::is_ok);
@@ -85,16 +89,71 @@ pub fn prepare_ranges(level: LogLevel, lranges: &[(u32, u32)]) -> Result<Vec<Lin
     let mut lranges: Vec<_> = lranges.into_iter().map(Result::unwrap).collect();
     lranges.sort_by_key(|k| k.from);
 
-    // FIXME: merge the ranges
+    let mut merged = Vec::new();
+    let mut iter = lranges.into_iter();
+    let mut prev = iter.next().unwrap();
+    while let Some(item) = iter.next() {
+        if prev.to >= item.from {
+            if prev.to < item.to {
+                prev.to = item.to;
+            }
+        } else {
+            merged.push(prev);
+            prev = item;
+        }
+    }
+    merged.push(prev);
 
-    if lranges.len() == 1 {
+    if merged.len() == 1 {
         let bof: u32 = LineRangeBound::BOF.into();
         let eof: u32 = LineRangeBound::EOF.into();
-        let first = *lranges.first().unwrap();
+        let first = *merged.first().unwrap();
         if first.from == bof && first.to == eof {
-            lranges.clear();
+            merged.clear();
         }
     }
 
-    Ok(lranges)
+    Ok(merged)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_line_ranges_merged() {
+        // empty
+        let output = prepare_ranges(LogLevel::TRACE, &Vec::new()).unwrap();
+        let expected = Vec::<LineRangeSpec>::new();
+        assert_eq!(expected, output);
+
+        // invalid range
+        let input = vec![(15, 30), (10, 20), (20, 10)];
+        let output = prepare_ranges(LogLevel::TRACE, &input);
+        let expected = Err(LineRangeError::InvalidRange(20, 10));
+        assert_eq!(expected, output);
+
+        // proper merge
+        let input = vec![(15, 30), (10, 20)];
+        let output = prepare_ranges(LogLevel::TRACE, &input).unwrap();
+        let expected = vec![
+            LineRangeSpec::new(LogLevel::TRACE, 10, 30).unwrap()
+        ];
+        assert_eq!(expected, output);
+
+        // proper merge
+        let input = vec![(15, 30), (10, 20), (40, 50)];
+        let output = prepare_ranges(LogLevel::TRACE, &input).unwrap();
+        let expected = vec![
+            LineRangeSpec::new(LogLevel::TRACE, 10, 30).unwrap(),
+            LineRangeSpec::new(LogLevel::TRACE, 40, 50).unwrap(),
+        ];
+        assert_eq!(expected, output);
+
+        // proper merge [special case for RootLogger::set_level]
+        let input = vec![(LineRangeBound::BOF.into(), 30), (10, 20), (30, LineRangeBound::EOF.into())];
+        let output = prepare_ranges(LogLevel::TRACE, &input).unwrap();
+        let expected = Vec::<LineRangeSpec>::new();
+        assert_eq!(expected, output);
+    }
 }
