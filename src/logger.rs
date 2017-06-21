@@ -415,6 +415,21 @@ mod tests {
     }
 
     #[test]
+    fn test_logger_hierarchy_override() {
+        run_test(|_| {
+            wp_set_level!(LogLevel::CRITICAL, "foo::bar").unwrap();
+            wp_set_level!(LogLevel::INFO, "foo").unwrap();
+
+            assert_eq!(wp_get_level!(^), LogLevel::WARN);
+            assert_eq!(wp_get_level!("foo::bar::qux::xyz"), LogLevel::INFO);
+            assert_eq!(wp_get_level!("foo::bar::qux"), LogLevel::INFO);
+            assert_eq!(wp_get_level!("foo::bar"), LogLevel::INFO);
+            assert_eq!(wp_get_level!("foo"), LogLevel::INFO);
+            assert_eq!(wp_get_level!("bar"), LogLevel::WARN);
+        });
+    }
+
+    #[test]
     #[should_panic(expected = "File path not specified")]
     fn test_set_level_range_0() {
         run_test(|_| {
@@ -655,6 +670,47 @@ mod tests {
                 });
             let expected: u32 = (0..100).filter(|x| x % 2 == 0).sum();
             assert_eq!(sum, expected);
+        });
+    }
+
+    #[test]
+    fn test_logger_spec_simple() {
+        run_test(|_| {
+            let spec = format!("critical,{},foo=info", this_file!());
+            wp_set_level!(spec(&spec)).unwrap();
+            assert_eq!(wp_get_level!(^), LogLevel::CRITICAL);
+            assert_eq!(wp_get_level!(), LogLevel::TRACE);
+            assert_eq!(wp_get_level!("foo"), LogLevel::INFO);
+        });
+    }
+
+    #[test]
+    fn test_logger_spec_json_valid() {
+        run_test(|_| {
+            let spec = format!(
+                r#"{{
+                    "level": "debug",
+                    "modules": [
+                        {{
+                            "path": "foo"
+                        }},
+                        {{
+                            "path": "{}",
+                            "level": "notice"
+                        }},
+                        {{
+                            "path": "{}",
+                            "level": "critical",
+                            "lines": [[{}, {}]]
+                        }}
+                    ]
+                    }}"#,
+                this_file!(), this_file!(), line!() + 4, line!() + 100);
+            wp_set_level!(spec(&spec)).unwrap();
+            assert_eq!(wp_get_level!(^), LogLevel::DEBUG);
+            assert_eq!(wp_get_level!(), LogLevel::NOTICE);
+            assert_eq!(wp_get_level!("foo"), LogLevel::TRACE);
+            assert_eq!(wp_get_level!(), LogLevel::CRITICAL);
         });
     }
 }
