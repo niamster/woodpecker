@@ -672,45 +672,4 @@ mod tests {
             assert_eq!(sum, expected);
         });
     }
-
-    #[test]
-    fn test_logger_spec_simple() {
-        run_test(|_| {
-            let spec = format!("critical,{},foo=info", this_file!());
-            wp_set_level!(spec(&spec)).unwrap();
-            assert_eq!(wp_get_level!(^), LogLevel::CRITICAL);
-            assert_eq!(wp_get_level!(), LogLevel::TRACE);
-            assert_eq!(wp_get_level!("foo"), LogLevel::INFO);
-        });
-    }
-
-    #[test]
-    fn test_logger_spec_json_valid() {
-        run_test(|_| {
-            let spec = format!(
-                r#"{{
-                    "level": "debug",
-                    "modules": [
-                        {{
-                            "path": "foo"
-                        }},
-                        {{
-                            "path": "{}",
-                            "level": "notice"
-                        }},
-                        {{
-                            "path": "{}",
-                            "level": "critical",
-                            "lines": [[{}, {}]]
-                        }}
-                    ]
-                    }}"#,
-                this_file!(), this_file!(), line!() + 4, line!() + 100);
-            wp_set_level!(spec(&spec)).unwrap();
-            assert_eq!(wp_get_level!(^), LogLevel::DEBUG);
-            assert_eq!(wp_get_level!(), LogLevel::NOTICE);
-            assert_eq!(wp_get_level!("foo"), LogLevel::TRACE);
-            assert_eq!(wp_get_level!(), LogLevel::CRITICAL);
-        });
-    }
 }
