@@ -17,13 +17,13 @@ use self::parking_lot::Mutex;
 
 use std::fs::{File, OpenOptions, create_dir_all};
 use std::path::Path;
-use std::fmt;
 use std::io;
 use std::io::Write;
 
 use handlers::Handler;
 
 /// The errors that might occur during creation of the handler.
+#[derive(Debug)]
 pub enum FileHandlerError {
     /// Any kind of I/O Error.
     IoError(io::Error),
@@ -32,15 +32,6 @@ pub enum FileHandlerError {
 impl From<io::Error> for FileHandlerError {
     fn from(e: io::Error) -> Self {
         FileHandlerError::IoError(e)
-    }
-}
-
-impl fmt::Debug for FileHandlerError {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            FileHandlerError::IoError(ref err) => write!(f, "{}", err),
-        }
     }
 }
 
@@ -80,11 +71,13 @@ mod tests {
     extern crate tempdir;
     use self::tempdir::TempDir;
 
+    use super::*;
+
     #[test]
     fn test_file() {
         let dir = TempDir::new("wp-f").unwrap();
         let path = dir.path().join("logs").join("test.log");
-        let mut ctx = super::Context::new(&path).unwrap();
+        let mut ctx = Context::new(&path).unwrap();
 
         assert!(path.exists());
         assert_eq!(path.metadata().unwrap().len(), 0);
@@ -92,5 +85,14 @@ mod tests {
         assert_eq!(path.metadata().unwrap().len(), 1);
         ctx.emit("x".as_bytes());
         assert_eq!(path.metadata().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_file_invalid() {
+        let dir = TempDir::new("wp-f").unwrap();
+        let ctx = Context::new(&dir.path());
+        let err = ctx.err().unwrap();
+
+        assert!(format!("{:?}", err).contains("directory"));
     }
 }

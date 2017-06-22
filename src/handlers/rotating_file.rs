@@ -17,13 +17,13 @@ use self::parking_lot::Mutex;
 
 use std::fs::{File, OpenOptions, create_dir_all, rename};
 use std::path::{Path, PathBuf};
-use std::fmt;
 use std::io;
 use std::io::Write;
 
 use handlers::Handler;
 
 /// The errors that might occur during creation of the handler.
+#[derive(Debug)]
 pub enum RotatingFileHandlerError {
     /// Any kind of I/O Error.
     IoError(io::Error),
@@ -36,17 +36,6 @@ pub enum RotatingFileHandlerError {
 impl From<io::Error> for RotatingFileHandlerError {
     fn from(e: io::Error) -> Self {
         RotatingFileHandlerError::IoError(e)
-    }
-}
-
-impl fmt::Debug for RotatingFileHandlerError {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            RotatingFileHandlerError::IoError(ref err) => write!(f, "{}", err),
-            RotatingFileHandlerError::SizeError(ref size) => write!(f, "Invalid size {}", size),
-            RotatingFileHandlerError::CountError(ref count) => write!(f, "Invalid count {}", count),
-        }
     }
 }
 
@@ -78,7 +67,7 @@ impl Context {
         if size == 0 {
             return Err(RotatingFileHandlerError::SizeError(size));
         }
-        if count == 0 {
+        if count < 2 {
             return Err(RotatingFileHandlerError::CountError(count));
         }
         Ok(Context {
@@ -134,7 +123,7 @@ impl Context {
         }
     }
 
-    fn emit(&mut self, msg: &[u8]) {
+    fn emit_check(&mut self, msg: &[u8]) -> Result<(), String> {
         self.____emit(msg);
         if self.current >= self.size {
             self.rotate();
@@ -143,13 +132,19 @@ impl Context {
                 Ok(file) => {
                     self.file = file;
                     self.current = 0;
+                    Ok(())
                 },
                 Err(err) => {
-                    let msg = format!("Failed to open {}: {:?}", self.path.display(), err);
-                    self.__emit(msg);
+                    Err(format!("Failed to open {}: {:?}", self.path.display(), err))
                 }
             }
+        } else {
+            Ok(())
         }
+    }
+
+    fn emit(&mut self, msg: &[u8]) {
+        let _ = self.emit_check(msg);
     }
 }
 
@@ -178,8 +173,16 @@ mod tests {
 
     use super::*;
 
+    use std::fs;
+    use std::fs::File;
+    use std::io::Read;
+
+    fn push_check(ctx: &mut super::Context, size: u64) -> Result<(), String> {
+        ctx.emit_check("x".repeat(size as usize).as_bytes())
+    }
+
     fn push(ctx: &mut super::Context, size: u64) {
-        ctx.emit("x".repeat(size as usize).as_bytes());
+        let _ = push_check(ctx, size);
     }
 
     fn tlogs(logs: &[PathBuf], size: u64, filled: usize) {
@@ -191,6 +194,19 @@ mod tests {
         for i in filled..logs.len() {
             assert!(!logs[i].exists());
         }
+    }
+
+    fn setro(path: &Path, ro: bool) {
+        let mut perms = fs::metadata(path).unwrap().permissions();
+        perms.set_readonly(ro);
+        fs::set_permissions(path, perms).unwrap();
+    }
+
+    fn contains(path: &Path, needle: &String) -> bool {
+        let mut log = File::open(path).unwrap();
+        let mut res = String::new();
+        log.read_to_string(&mut res).unwrap();
+        res.contains(needle)
     }
 
     #[test]
@@ -223,5 +239,61 @@ mod tests {
         }
 
         assert!(!flog.exists());
+    }
+
+    #[test]
+    fn test_rotating_file_invalid() {
+        let dir = TempDir::new("wp-f").unwrap();
+        let ctx = Context::new(&dir.path(), 1, 1);
+        let err = ctx.err().unwrap();
+
+        assert!(format!("{:?}", err).contains("directory"));
+
+        let path = dir.path().join("logs").join("test.log");
+
+        for count in 0..2 {
+            let err = Context::new(&path, count, 1).err().unwrap();
+            assert!(format!("{:?}", err).contains("CountError"));
+        }
+
+        let err = Context::new(&path, 1, 0).err().unwrap();
+        assert!(format!("{:?}", err).contains("SizeError"));
+    }
+
+    #[test]
+    fn test_rotating_file_failure() {
+        let dir = TempDir::new("wp-f").unwrap();
+        let path = dir.path().join("test.log");
+        let count = 3;
+        let mut ctx = Context::new(&path, count, 1).unwrap();
+        let mut logs = super::Context::logs(&path, count);
+        logs.reverse();
+
+        // Fail rename of origin to `.x`
+        setro(&dir.path(), true);
+        push(&mut ctx, 2);
+        for log in &logs {
+            assert!(!log.exists());
+        }
+
+        // Fail rename from `.x` to `.y`
+        setro(&dir.path(), false);
+        push(&mut ctx, 2);
+        setro(&dir.path(), true);
+        push(&mut ctx, 2);
+        assert!(logs[0].exists());
+        for idx in 1..logs.len() {
+            assert!(!logs[idx].exists());
+        }
+        let expect = "Failed to rename".to_string();
+        assert!(contains(&path, &expect));
+        for idx in 0..1 {
+            assert!(contains(&logs[idx], &expect));
+        }
+
+        // Fail to open origin
+        setro(&dir.path(), false);
+        dir.close().unwrap();
+        assert!(push_check(&mut ctx, 2).err().unwrap().contains("Failed to open"));
     }
 }

@@ -111,7 +111,7 @@ macro_rules! wp_set_level {
                 __wp_write_root!(set_level($level, $logger, lranges))
             },
             Err(err) => {
-                let err: Result<(), String> = Err(err.to_string());
+                let err: Result<(), String> = Err(format!("{:?}", err));
                 err
             },
         }
@@ -138,7 +138,7 @@ macro_rules! wp_set_level {
                     Ok(())
                 }()
             },
-            Err(err) => Err(err.to_string())
+            Err(err) => Err(format!("{:?}", err))
         }
     }};
 

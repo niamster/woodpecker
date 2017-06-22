@@ -165,12 +165,6 @@ pub enum ParseError {
     Json(JsonError),
 }
 
-impl ToString for ParseError {
-    fn to_string(&self) -> String {
-        format!("{:?}", self)
-    }
-}
-
 fn parse_json(json: &str) -> Result<Root, ParseError> {
     let spec: Value = serde_json::from_str(json)
         .or(Err(ParseError::Json(JsonError::Json)))?;
@@ -258,9 +252,6 @@ fn parse_token(root: &mut Root, token: &str) -> Result<(), ParseError> {
         return Err(ParseError::Spec);
     }
 
-    if k.is_none() {
-        return Err(ParseError::Spec);
-    }
     let k = k.unwrap().trim();
     if k.is_empty() {
         return Err(ParseError::Spec);
@@ -322,6 +313,7 @@ mod tests {
         assert_eq!(Err(ParseError::Spec), parse("foo,"));
         assert_eq!(Err(ParseError::Spec), parse(",foo"));
         assert_eq!(Err(ParseError::Spec), parse("foo=bar"));
+        assert_eq!("Spec", format!("{:?}", parse("foo=bar").err().unwrap()));
     }
 
     #[test]
@@ -407,5 +399,13 @@ mod tests {
                    parse(r#"{"modules": [{"path": "bar", "lines": [[1]]}]}"#));
         assert_eq!(Err(ParseError::Json(JsonError::LineRange)),
                    parse(r#"{"modules": [{"path": "bar", "lines": [[1, 10, 20]]}]}"#));
+        assert_eq!(Err(ParseError::Json(JsonError::LineRange)),
+                   parse(r#"{"modules": [{"path": "bar", "lines": [[1, 4294967296]]}]}"#));
+        assert_eq!(Err(ParseError::Json(JsonError::LineRange)),
+                   parse(r#"{"modules": [{"path": "bar", "lines": [[4294967296, 4294967297]]}]}"#));
+        assert_eq!(Err(ParseError::Json(JsonError::LineRange)),
+                   parse(r#"{"modules": [{"path": "bar", "lines": [[0, 0.5]]}]}"#));
+        assert_eq!(Err(ParseError::Json(JsonError::LineRange)),
+                   parse(r#"{"modules": [{"path": "bar", "lines": [[0.5, 1]]}]}"#));
     }
 }

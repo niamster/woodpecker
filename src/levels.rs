@@ -139,5 +139,9 @@ mod tests {
 
         assert_eq!(LogLevel::from(-1), LogLevel::UNSUPPORTED);
         assert_eq!(LogLevel::from(-1000), LogLevel::UNSUPPORTED);
+
+        let level: isize = LogLevel::LOG.into();
+        let level: LogLevel = level.into();
+        assert_eq!(level.to_string(), "LOG");
     }
 }

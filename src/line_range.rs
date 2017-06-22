@@ -64,14 +64,6 @@ impl LineRangeSpec {
     }
 }
 
-impl ToString for LineRangeError {
-    fn to_string(&self) -> String {
-        match *self {
-            LineRangeError::InvalidRange(from, to) => format!("Invalid range [{}; {}]", from, to),
-        }
-    }
-}
-
 #[doc(hidden)]
 pub fn prepare_ranges(level: LogLevel, lranges: &[(u32, u32)]) -> Result<Vec<LineRangeSpec>, LineRangeError> {
     if lranges.is_empty() {

@@ -418,6 +418,7 @@ mod tests {
     fn test_logger_hierarchy_override() {
         run_test(|_| {
             wp_set_level!(LogLevel::CRITICAL, "foo::bar").unwrap();
+            wp_set_level!(LogLevel::DEBUG, "fox").unwrap();
             wp_set_level!(LogLevel::INFO, "foo").unwrap();
 
             assert_eq!(wp_get_level!(^), LogLevel::WARN);
@@ -426,6 +427,8 @@ mod tests {
             assert_eq!(wp_get_level!("foo::bar"), LogLevel::INFO);
             assert_eq!(wp_get_level!("foo"), LogLevel::INFO);
             assert_eq!(wp_get_level!("bar"), LogLevel::WARN);
+            assert_eq!(wp_get_level!("fox"), LogLevel::DEBUG);
+            assert_eq!(wp_get_level!("fox::bar"), LogLevel::DEBUG);
         });
     }
 
@@ -446,7 +449,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Invalid range")]
+    #[should_panic(expected = "InvalidRange(42, 41)")]
     fn test_set_level_range_2() {
         run_test(|_| {
             wp_set_level!(LogLevel::TRACE, this_file!(), [(42u32, 41u32)]).unwrap();
@@ -458,6 +461,18 @@ mod tests {
         run_test(|_| {
             assert_eq!(wp_set_level!(LogLevel::TRACE, "foo", [(LineRangeBound::BOF, LineRangeBound::EOF)]), Ok(()));
             assert_eq!(wp_set_level!(LogLevel::TRACE, this_file!(), [(LineRangeBound::BOF, 42u32)]), Ok(()));
+        });
+    }
+
+    #[test]
+    fn test_set_level_range_4() {
+        run_test(|_| {
+            wp_set_level!(LogLevel::CRITICAL, this_file!()).unwrap();
+            let ranges = vec![(LineRangeBound::BOF.into(), line!() + 2), (line!() + 4, LineRangeBound::EOF.into())];
+            wp_set_level!(LogLevel::WARN, this_file!(), ranges).unwrap();
+            assert_eq!(wp_get_level!(), LogLevel::WARN);
+            assert_eq!(wp_get_level!(), LogLevel::CRITICAL);
+            assert_eq!(wp_get_level!(), LogLevel::WARN);
         });
     }
 
@@ -611,6 +626,7 @@ mod tests {
                     out.write().push_str(record.formatted().deref());
                 }));
                 wp_set_formatter!(Box::new(|record| {
+                    assert!(record.ts().sec > 0);
                     format!(
                         "{}:{}|",
                         record.level(),
