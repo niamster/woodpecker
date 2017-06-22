@@ -196,12 +196,14 @@ mod tests {
         }
     }
 
+    #[cfg(not(target_os = "windows"))]
     fn setro(path: &Path, ro: bool) {
         let mut perms = fs::metadata(path).unwrap().permissions();
         perms.set_readonly(ro);
         fs::set_permissions(path, perms).unwrap();
     }
 
+    #[cfg(not(target_os = "windows"))]
     fn contains(path: &Path, needle: &String) -> bool {
         let mut log = File::open(path).unwrap();
         let mut res = String::new();
@@ -260,6 +262,7 @@ mod tests {
         assert!(format!("{:?}", err).contains("SizeError"));
     }
 
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn test_rotating_file_failure() {
         let dir = TempDir::new("wp-f").unwrap();
