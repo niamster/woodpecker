@@ -8,11 +8,6 @@ exclude="--exclude-pattern=.cargo,/usr/lib"
 PROJECT=woodpecker
 OUTPUT=target/cov/${PROJECT}
 
-POUTPUT1=${OUTPUT}-1
-POUTPUT2=${OUTPUT}-2
-
-POUTPUT="${POUTPUT1} ${POUTPUT2}"
-
 die() {
     echo $*
     exit 1
@@ -30,17 +25,15 @@ fi
 
 ${kcov} --version >/dev/null 2>&1 || die "kcov is not installed"
 
-rm -rf $OUTPUT $POUTPUT
-mkdir -p $OUTPUT $POUTPUT
+rm -rf $OUTPUT
+mkdir -p $OUTPUT
 
 cargo test --no-run || die
 findexe
-${kcov} $exclude --verify $POUTPUT1 $EXE || die
+${kcov} $exclude --verify $OUTPUT $EXE || die
 
 cargo test --no-run --features test-thread-log || die
 findexe
-${kcov} $exclude --verify $POUTPUT2 $EXE || die
-
-${kcov} $coveralls --merge $OUTPUT $POUTPUT || die
+${kcov} $coveralls $exclude --verify $OUTPUT $EXE || die
 
 echo "Check out the coverage via file://$(pwd)/${OUTPUT}/index.html"
