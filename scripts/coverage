@@ -25,6 +25,8 @@ fi
 
 ${kcov} --version >/dev/null 2>&1 || die "kcov is not installed"
 
+cargo clean
+
 rm -rf $OUTPUT
 mkdir -p $OUTPUT
 
