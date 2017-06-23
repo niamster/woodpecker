@@ -88,6 +88,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(target_os = "windows", ignore)]
     fn test_file_invalid() {
         let dir = TempDir::new("wp-f").unwrap();
         let ctx = Context::new(&dir.path());

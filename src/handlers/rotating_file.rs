@@ -196,14 +196,12 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
     fn setro(path: &Path, ro: bool) {
         let mut perms = fs::metadata(path).unwrap().permissions();
         perms.set_readonly(ro);
         fs::set_permissions(path, perms).unwrap();
     }
 
-    #[cfg(unix)]
     fn contains(path: &Path, needle: &String) -> bool {
         let mut log = File::open(path).unwrap();
         let mut res = String::new();
@@ -244,6 +242,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(target_os = "windows", ignore)]
     fn test_rotating_file_invalid() {
         let dir = TempDir::new("wp-f").unwrap();
         let ctx = Context::new(&dir.path(), 1, 1);
@@ -262,8 +261,8 @@ mod tests {
         assert!(format!("{:?}", err).contains("SizeError"));
     }
 
-    #[cfg(unix)]
     #[test]
+    #[cfg_attr(target_os = "windows", ignore)]
     fn test_rotating_file_failure() {
         let dir = TempDir::new("wp-f").unwrap();
         let path = dir.path().join("test.log");
