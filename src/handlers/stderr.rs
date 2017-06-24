@@ -17,7 +17,6 @@ use std::ops::Deref;
 
 use handlers::Handler;
 
-#[doc(hidden)]
 pub(crate) fn emit(formatted: &str) {
     let stderr = io::stderr();
     let mut stderr = stderr.lock();

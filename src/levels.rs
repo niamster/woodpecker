@@ -77,7 +77,6 @@ impl From<isize> for LogLevel {
 }
 
 // NOTE: `LOG` level should not be included here
-#[doc(hidden)]
 pub(crate) const LEVELS: [LogLevel; 8] = [
     LogLevel::TRACE,
     LogLevel::DEBUG,
