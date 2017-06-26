@@ -138,12 +138,11 @@ impl RootLogger {
         }
 
         let level = if lranges.is_empty() {
+            self.remove_children(path);
             level
         } else {
             self.get_level(path, LineRangeBound::EOF.into())
         };
-
-        self.remove_children(path);
 
         let logger = ModuleSpec {
             level: level,
