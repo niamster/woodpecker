@@ -23,6 +23,7 @@ use self::crossbeam::mem::CachePadded;
 
 extern crate thread_id;
 
+use std::ops::Deref;
 use std::mem;
 use std::sync::{Arc, Once, ONCE_INIT};
 use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering,
@@ -69,24 +70,24 @@ struct ModuleSpec {
 #[doc(hidden)]
 pub struct RootLogger {
     loggers: CachePadded<BTreeMap<String, ModuleSpec>>,
-    formatter: Arc<Formatter>,
-    handlers: Vec<Handler>,
-    queue: Arc<QVec>,
+    formatter: CachePadded<Arc<Formatter>>,
+    handlers: CachePadded<Vec<Handler>>,
+    queue: CachePadded<Arc<QVec>>,
 }
 
 impl RootLogger {
     fn new(queue: Arc<QVec>) -> Self {
         RootLogger {
             loggers: CachePadded::new(BTreeMap::new()),
-            formatter: Arc::new(Box::new(::formatters::default::formatter)),
-            handlers: Vec::new(),
-            queue: queue,
+            formatter: CachePadded::new(Arc::new(Box::new(::formatters::default::formatter))),
+            handlers: CachePadded::new(Vec::new()),
+            queue: CachePadded::new(queue),
         }
     }
 
     fn reset(&mut self) {
         self.loggers.clear();
-        self.formatter = Arc::new(Box::new(::formatters::default::formatter));
+        self.formatter = CachePadded::new(Arc::new(Box::new(::formatters::default::formatter)));
         self.handlers.clear();
     }
 
@@ -102,7 +103,7 @@ impl RootLogger {
 
     #[doc(hidden)]
     pub fn formatter(&mut self, formatter: Formatter) {
-        self.formatter = Arc::new(formatter);
+        self.formatter = CachePadded::new(Arc::new(formatter));
     }
 
     fn remove_children(&mut self, path: &str) {
@@ -196,7 +197,7 @@ impl RootLogger {
         if self.handlers.is_empty() {
             ::handlers::stdout::emit(&record.formatted());
         } else {
-            for h in &self.handlers {
+            for h in self.handlers.deref() {
                 h(record);
             }
         }
