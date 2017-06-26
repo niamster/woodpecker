@@ -17,7 +17,7 @@ use std::str::FromStr;
 use std::collections::HashMap;
 
 /// The logging levels.
-#[derive(PartialEq, PartialOrd, Clone, Copy, Debug)]
+#[derive(PartialEq, PartialOrd, Ord, Eq, Clone, Copy, Debug)]
 pub enum LogLevel {
     #[doc(hidden)]
     UNSUPPORTED,
@@ -132,6 +132,8 @@ impl fmt::Display for LogLevel {
 mod tests {
     use super::*;
 
+    use std::cmp::Ordering;
+
     #[test]
     fn test_logger_level() {
         assert_eq!(LogLevel::from(0), LogLevel::INFO);
@@ -142,5 +144,12 @@ mod tests {
         let level: isize = LogLevel::LOG.into();
         let level: LogLevel = level.into();
         assert_eq!(level.to_string(), "LOG");
+
+        assert!(LogLevel::WARN == LogLevel::WARN);
+        assert_eq!(Ordering::Equal, LogLevel::WARN.cmp(&LogLevel::WARN));
+        assert!(LogLevel::WARN >= LogLevel::WARN);
+        assert!(LogLevel::WARN > LogLevel::INFO);
+        assert_eq!(Ordering::Greater, LogLevel::WARN.cmp(&LogLevel::INFO));
+        assert!(LogLevel::WARN >= LogLevel::INFO);
     }
 }

@@ -38,6 +38,7 @@ use std::env;
 use levels::LogLevel;
 use record::Record;
 use record::imp::{SyncRecord, AsyncRecord, RecordMeta};
+use line_range;
 use line_range::{LineRangeBound, LineRangeSpec};
 use formatters::Formatter;
 use handlers::Handler;
@@ -62,6 +63,7 @@ lazy_static! {
 
 type QVec = [SegQueue<AsyncRecord>; QNUM];
 
+#[derive(Debug)]
 struct ModuleSpec {
     level: LogLevel,
     lranges: Vec<LineRangeSpec>,
@@ -123,25 +125,37 @@ impl RootLogger {
     }
 
     #[doc(hidden)]
-    pub fn set_level(&mut self, level: LogLevel, path: &str, lranges: Vec<LineRangeSpec>) -> Result<(), String> {
+    pub fn set_level(&mut self, path: &str, level: LogLevel) -> Result<(), String> {
         if level == LogLevel::UNSUPPORTED {
             return Err("Unsupported log level".to_string());
         }
 
-        if !lranges.is_empty() {
-            if !path.ends_with("<anon>") && !path.ends_with(".rs") {
-                return Err("File path not specified".to_string());
-            }
-            if path.find(wp_separator!()).is_none() {
-                return Err("Module not specified".to_string());
-            }
+        self.remove_children(path);
+        let logger = ModuleSpec {
+            level: level,
+            lranges: Vec::new(),
+        };
+        self.loggers.insert(path.to_string(), logger);
+        global::set_loggers(true);
+
+        Ok(())
+    }
+
+    #[doc(hidden)]
+    pub fn set_level_ranges(&mut self, path: &str, lranges: Vec<LineRangeSpec>) -> Result<(), String> {
+        if !path.ends_with("<anon>") && !path.ends_with(".rs") {
+            return Err("File path not specified".to_string());
+        }
+        if path.find(wp_separator!()).is_none() {
+            return Err("Module not specified".to_string());
         }
 
-        let level = if lranges.is_empty() {
-            self.remove_children(path);
-            level
+        let level = self.get_level(path, LineRangeBound::EOF.into());
+
+        let lranges = if let Some(old) = self.loggers.get(path) {
+            line_range::merge_spec(&old.lranges, &lranges)
         } else {
-            self.get_level(path, LineRangeBound::EOF.into())
+            lranges
         };
 
         let logger = ModuleSpec {
@@ -149,7 +163,6 @@ impl RootLogger {
             lranges: lranges,
         };
         self.loggers.insert(path.to_string(), logger);
-
         global::set_loggers(true);
 
         Ok(())
@@ -166,7 +179,7 @@ impl RootLogger {
                     return logger.level;
                 }
                 for range in &logger.lranges {
-                    if line >= range.from && line <= range.to {
+                    if range.contains(line) {
                         return range.level;
                     }
                 }
@@ -183,7 +196,7 @@ impl RootLogger {
         if !LOG_THREAD.load(Ordering::Relaxed) {
             self.process(&record);
         } else {
-            let record: AsyncRecord = record.into();
+            let record = record.into();
             let qidx = thread_id::get() % QNUM;
             assert!(qidx < QNUM);
             self.queue[qidx].push(record);
@@ -468,11 +481,20 @@ mod tests {
     fn test_set_level_range_4() {
         run_test(|_| {
             wp_set_level!(LogLevel::CRITICAL, this_file!()).unwrap();
-            let ranges = vec![(LineRangeBound::BOF.into(), line!() + 2), (line!() + 4, LineRangeBound::EOF.into())];
-            wp_set_level!(LogLevel::WARN, this_file!(), ranges).unwrap();
+            wp_set_level!(LogLevel::WARN, this_file!(), [
+                (LineRangeBound::BOF.into(), line!() + 3).into(),
+                (line!() + 4, LineRangeBound::EOF.into()).into(),
+            ]).unwrap();
             assert_eq!(wp_get_level!(), LogLevel::WARN);
             assert_eq!(wp_get_level!(), LogLevel::CRITICAL);
             assert_eq!(wp_get_level!(), LogLevel::WARN);
+            wp_set_level!(LogLevel::INFO, this_file!(), [
+                (line!(), line!() + 2).into()
+            ]).unwrap();
+            assert_eq!(wp_get_level!(), LogLevel::INFO);
+            assert_eq!(wp_get_level!(), LogLevel::WARN);
+            wp_set_level!(LogLevel::CRITICAL, this_file!()).unwrap();
+            assert_eq!(wp_get_level!(), LogLevel::CRITICAL);
         });
     }
 

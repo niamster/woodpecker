@@ -53,7 +53,10 @@
 ///     assert_eq!(wp_get_level!(), wp::LogLevel::WARN);
 ///
 ///     wp_set_level!(wp::LogLevel::CRITICAL, this_file!()).unwrap();
-///     let ranges = vec![(wp::BOF.into(), line!() + 2), (line!() + 4, wp::EOF.into())];
+///     let ranges = vec![
+///         (wp::BOF.into(), line!() + 4).into(),
+///         (line!() + 5, wp::EOF.into()).into()
+///     ];
 ///     wp_set_level!(wp::LogLevel::WARN, this_file!(), ranges).unwrap();
 ///     assert_eq!(wp_get_level!(), wp::LogLevel::WARN);
 ///     assert_eq!(wp_get_level!(), wp::LogLevel::CRITICAL);
@@ -102,13 +105,25 @@ macro_rules! wp_set_level {
             let (from, to): (u32, u32) = ($from.into(), $to.into());
             lranges.push((from, to));
         )*;
-        wp_set_level!($level, $logger, lranges)
+        match $crate::line_range::from_vtuple(&lranges) {
+            Ok(lranges) => {
+                wp_set_level!($level, $logger, lranges)
+            },
+            Err(err) => {
+                let err: Result<(), String> = Err(format!("{:?}", err));
+                err
+            }
+        }
     }};
 
     ($level:expr, $logger:expr, $lranges:expr) => {{
-        match $crate::line_range::prepare_ranges($level, &$lranges) {
+        match $crate::line_range::spec($level, &$lranges) {
             Ok(lranges) => {
-                __wp_write_root!(set_level($level, $logger, lranges))
+                if lranges.is_empty() {
+                    __wp_write_root!(set_level($logger, $level))
+                } else {
+                    __wp_write_root!(set_level_ranges($logger, lranges))
+                }
             },
             Err(err) => {
                 let err: Result<(), String> = Err(format!("{:?}", err));
@@ -118,7 +133,7 @@ macro_rules! wp_set_level {
     }};
 
     ($level:expr, $logger:expr) => {{
-        __wp_write_root!(set_level($level, $logger, Vec::new()))
+        __wp_write_root!(set_level($logger, $level))
     }};
 
     (spec($spec:expr)) => {{
@@ -129,11 +144,7 @@ macro_rules! wp_set_level {
                 }
                 || -> Result<(), String> {
                     for module in &spec.modules {
-                        if let Some(lranges) = module.lranges.as_ref() {
-                            wp_set_level!(module.level, &module.path, lranges)?;
-                        } else {
-                            wp_set_level!(module.level, &module.path)?;
-                        }
+                        wp_set_level!(module.level, &module.path, &module.lranges)?;
                     }
                     Ok(())
                 }()

@@ -31,7 +31,6 @@ use record::Record;
 
 const PREALLOC: usize = 128;
 
-#[doc(hidden)]
 #[derive(Clone)]
 pub struct RecordMeta {
     pub level: LogLevel,
@@ -139,7 +138,6 @@ impl RecordLazyMeta {
     }
 }
 
-#[doc(hidden)]
 pub(crate) struct SyncRecord<'a> {
     irecord: &'static RecordMeta,
     args: fmt::Arguments<'a>,
@@ -148,7 +146,6 @@ pub(crate) struct SyncRecord<'a> {
 }
 
 impl<'a> SyncRecord<'a> {
-    #[doc(hidden)]
     #[inline(always)]
     pub(crate) fn new(record: &'static RecordMeta,
                ts: time::Timespec,
@@ -202,7 +199,6 @@ impl<'a> Record for SyncRecord<'a> {
     }
 }
 
-#[doc(hidden)]
 pub(crate) struct AsyncRecord {
     irecord: &'static RecordMeta,
     msg: String,

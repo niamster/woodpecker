@@ -78,15 +78,18 @@ extern crate serde_json;
 use self::serde_json::Value;
 
 use std;
+use std::cmp::Ordering;
 
 use levels::LogLevel;
+use line_range;
+use line_range::Range;
 
 #[doc(hidden)]
 #[derive(PartialEq, PartialOrd, Clone, Debug)]
 pub struct Module {
     pub path: String,
     pub level: LogLevel,
-    pub lranges: Option<Vec<(u32, u32)>>,
+    pub lranges: Vec<Range>,
 }
 
 impl Module {
@@ -94,15 +97,15 @@ impl Module {
         Module {
             path: path.to_string(),
             level: level,
-            lranges: None,
+            lranges: Vec::new(),
         }
     }
 
-    fn with_lranges(path: &str, level: LogLevel, lranges: Vec<(u32, u32)>) -> Self {
+    fn with_lranges(path: &str, level: LogLevel, lranges: Vec<Range>) -> Self {
         Module {
             path: path.to_string(),
             level: level,
-            lranges: Some(lranges),
+            lranges: lranges,
         }
     }
 }
@@ -133,7 +136,7 @@ impl Root {
     #[cfg(test)]
     fn module(mut self, module: Module) -> Self {
         self.modules.push(module);
-        self
+        squash(self).unwrap()
     }
 }
 
@@ -152,6 +155,8 @@ pub enum JsonError {
     ModuleLogLevel,
     /// The line range of the module is invalid.
     LineRange,
+    /// Line level intersection with different log levels.
+    Intersection,
 }
 
 /// Generic log spec parse failure.
@@ -227,7 +232,13 @@ fn parse_json(json: &str) -> Result<Root, ParseError> {
                     if to > std::u32::MAX as u64 {
                         return Err(ParseError::Json(JsonError::LineRange))
                     }
-                    lranges.push((from as u32, to as u32));
+                    if from > to {
+                        return Err(ParseError::Json(JsonError::LineRange))
+                    }
+                    lranges.push(
+                        Range::new(from as u32, to as u32)
+                            .or(Err(ParseError::Json(JsonError::LineRange)))?
+                    );
                 }
                 Module::with_lranges(path, level, lranges)
             } else {
@@ -280,6 +291,83 @@ fn parse_token(root: &mut Root, token: &str) -> Result<(), ParseError> {
     Ok(())
 }
 
+fn squash(mut root: Root) -> Result<Root, ParseError> {
+    if root.modules.is_empty() {
+        return Ok(root);
+    }
+
+    root.modules
+        .sort_by(|a, b|
+                 match a.path.cmp(&b.path) {
+                     Ordering::Equal => a.level.cmp(&b.level),
+                     order => order,
+                 }
+    );
+    for module in &mut root.modules {
+        module.lranges = line_range::merge_ranges(&module.lranges, true);
+    }
+
+    let mut squashed = Root::new();
+    squashed.level = root.level;
+
+    // Squash
+    let mut modules = Vec::new();
+    let mut iter = root.modules.into_iter();
+    let mut prev = iter.next().unwrap();
+    for item in iter {
+        if prev.path == item.path && prev.level == item.level  {
+            let mut lranges = Vec::new();
+            lranges.extend_from_slice(&prev.lranges);
+            lranges.extend_from_slice(&item.lranges);
+            prev.lranges = line_range::merge_ranges(&lranges, true);
+        } else {
+            modules.push(prev.clone());
+            prev = item;
+        }
+    }
+    modules.push(prev.clone());
+    squashed.modules = modules;
+
+    // Make sure that modules without precised line ranges appear first
+    squashed.modules
+        .sort_by(|a, b|
+                 match a.path.cmp(&b.path) {
+                     Ordering::Equal => {
+                         if a.lranges.is_empty() {
+                             Ordering::Less
+                         } else if b.lranges.is_empty() {
+                             Ordering::Greater
+                         } else {
+                             a.level.cmp(&b.level)
+                         }
+                     },
+                     order => order,
+                 }
+    );
+
+    // Make sure there are not intersections
+    {
+        let mut iter = squashed.modules.iter();
+        let mut prev = iter.next().unwrap();
+        for item in iter {
+            if prev.path == item.path
+                && !prev.lranges.is_empty()
+                && prev.level != item.level {
+                    for prange in &prev.lranges {
+                        for irange in &item.lranges {
+                            if prange.intersects(irange) {
+                                return Err(ParseError::Json(JsonError::Intersection));
+                            }
+                        }
+                    }
+                }
+            prev = item;
+        }
+    }
+
+    Ok(squashed)
+}
+
 #[doc(hidden)]
 pub fn parse(spec: &str) -> Result<Root, ParseError> {
     let spec = spec.trim();
@@ -288,7 +376,7 @@ pub fn parse(spec: &str) -> Result<Root, ParseError> {
     }
 
     if spec.starts_with('{') {
-        return parse_json(spec);
+        return parse_json(spec).and_then(|root| squash(root));
     }
 
     let mut root = Root::new();
@@ -296,7 +384,7 @@ pub fn parse(spec: &str) -> Result<Root, ParseError> {
         parse_token(&mut root, token)?;
     }
 
-    Ok(root)
+    squash(root)
 }
 
 #[cfg(test)]
@@ -337,9 +425,9 @@ mod tests {
     fn test_spec_combined() {
         let expect = Root::with_level(LogLevel::CRITICAL)
             .module(Module::with_level("foo", LogLevel::TRACE))
-            .module(Module::with_level("bar", LogLevel::TRACE))
-            .module(Module::with_level("qux", LogLevel::ERROR));
-        assert_eq!(Ok(expect), parse("critical,foo,bar,qux=error"));
+            .module(Module::with_level("qux", LogLevel::TRACE))
+            .module(Module::with_level("bar", LogLevel::ERROR));
+        assert_eq!(Ok(expect), parse("critical,foo,bar=error,qux"));
     }
 
     #[test]
@@ -348,7 +436,7 @@ mod tests {
             .module(Module::with_level("foo", LogLevel::TRACE))
             .module(Module::with_level("bar", LogLevel::TRACE))
             .module(Module::with_lranges("bar", LogLevel::ERROR,
-                                       vec!((10, 100), (120, 130))));
+                                         vec!((10, 100).into(), (120, 130).into())));
         assert_eq!(Ok(expect), parse(r#"{
                                             "level": "critical",
                                             "modules": [
@@ -407,5 +495,70 @@ mod tests {
                    parse(r#"{"modules": [{"path": "bar", "lines": [[0, 0.5]]}]}"#));
         assert_eq!(Err(ParseError::Json(JsonError::LineRange)),
                    parse(r#"{"modules": [{"path": "bar", "lines": [[0.5, 1]]}]}"#));
+        assert_eq!(Err(ParseError::Json(JsonError::LineRange)),
+                   parse(r#"{"modules": [{"path": "bar", "lines": [[20, 10]]}]}"#));
+    }
+
+    #[test]
+    fn test_spec_json_squash() {
+        let spec = parse(r#"{"modules": [
+                                {
+                                    "path": "bar",
+                                     "lines": [
+                                        [120, 130], [10, 50]
+                                     ]
+                                },
+                                {
+                                    "path": "bar",
+                                    "level": "error"
+                                },
+                                {
+                                    "path": "bar",
+                                     "lines": [
+                                        [80, 120], [50, 80]
+                                     ]
+                                },
+                                {
+                                    "path": "bar",
+                                    "level": "critical",
+                                     "lines": [
+                                        [131, 140]
+                                     ]
+                                },
+                                {
+                                    "path": "bar",
+                                    "level": "error"
+                                }
+                            ]}"#).unwrap();
+        let modules = vec![
+            Module::with_level("bar", LogLevel::ERROR),
+            Module::with_lranges("bar", LogLevel::TRACE, vec![
+                (10, 130).into(),
+            ]),
+            Module::with_lranges("bar", LogLevel::CRITICAL, vec![
+                (131, 140).into(),
+            ]),
+        ];
+        assert_eq!(spec.modules, modules);
+    }
+
+    #[test]
+    fn test_spec_json_squash_intersection() {
+        let spec = parse(r#"{"modules": [
+                                {
+                                    "path": "bar",
+                                     "lines": [
+                                        [50, 80]
+                                     ]
+                                },
+                                {
+                                    "path": "bar",
+                                    "level": "info",
+                                     "lines": [
+                                        [60, 70]
+                                     ]
+                                }
+                            ]}"#);
+        assert_eq!(Err(ParseError::Json(JsonError::Intersection)), spec)
     }
 }

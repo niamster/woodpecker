@@ -20,24 +20,20 @@ use levels::LogLevel;
 static LOG_LEVEL: AtomicIsize = ATOMIC_ISIZE_INIT;
 static HAS_SUBLOGGERS: AtomicBool = ATOMIC_BOOL_INIT;
 
-#[doc(hidden)]
 #[inline(always)]
 pub fn get_level() -> LogLevel {
     LogLevel::from(LOG_LEVEL.load(Ordering::Relaxed))
 }
 
-#[doc(hidden)]
 pub fn set_level(level: LogLevel) {
     LOG_LEVEL.store(level.into(), Ordering::Relaxed);
 }
 
-#[doc(hidden)]
 #[inline(always)]
 pub fn has_loggers() -> bool {
     HAS_SUBLOGGERS.load(Ordering::Relaxed)
 }
 
-#[doc(hidden)]
 pub fn set_loggers(value: bool) {
     HAS_SUBLOGGERS.store(value, Ordering::Relaxed);
 }
