@@ -52,7 +52,7 @@
 /// use std::ops::Deref;
 ///
 /// fn main() {
-///     wp_init!(wp::Config { thread: true, ..Default::default() });
+///     wp_init!(&wp::Config { thread: true, ..Default::default() });
 ///
 ///     let out = Arc::new(Mutex::new(String::new()));
 ///     {
@@ -74,7 +74,7 @@
 macro_rules! wp_init {
     () => {{
         let config: $crate::Config = Default::default();
-        wp_init!(config)
+        wp_init!(&config)
     }};
     ($config:expr) => {{
         $crate::init($config)

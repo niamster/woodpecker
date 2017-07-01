@@ -110,9 +110,8 @@ mod wpb {
         ONCE.call_once(|| {
             let config = wp::Config {
                 thread: cfg!(feature = "test-thread-log"),
-                ..Default::default()
             };
-            wp_init!(config);
+            wp_init!(&config);
         });
         wp::logger::reset();
         wp_set_level!(wp::LogLevel::ERROR).unwrap();

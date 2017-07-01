@@ -376,7 +376,7 @@ pub fn parse(spec: &str) -> Result<Root, ParseError> {
     }
 
     if spec.starts_with('{') {
-        return parse_json(spec).and_then(|root| squash(root));
+        return parse_json(spec).and_then(squash);
     }
 
     let mut root = Root::new();

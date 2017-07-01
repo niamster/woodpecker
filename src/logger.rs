@@ -323,7 +323,7 @@ pub fn reset() {
 }
 
 #[doc(hidden)]
-pub fn init(config: Config) {
+pub fn init(config: &Config) {
     let log_thread = match env::var("WP_LOG_THREAD") {
         Ok(ref val) => {
             let val = &val.to_lowercase()[..1];
@@ -369,7 +369,7 @@ mod tests {
                     thread: cfg!(feature = "test-thread-log"),
                     ..Default::default()
                 };
-                wp_init!(config);
+                wp_init!(&config);
 
                 let context = Arc::new(TContext {
                     lock: Mutex::new(0),

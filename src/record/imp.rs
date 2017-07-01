@@ -69,9 +69,9 @@ impl RecordLazyMetaInner {
         }
     }
 
-    fn mk_msg_str(&mut self, msg: &String) {
+    fn mk_msg_str(&mut self, msg: &str) {
         if self.msg.is_none() {
-            self.msg = Some(Arc::new(msg.clone()));
+            self.msg = Some(Arc::new(msg.to_string()));
         }
     }
 
@@ -104,7 +104,7 @@ impl RecordLazyMeta {
         msg.clone()
     }
 
-    fn msg_str(&self, msg: &String) -> Arc<String> {
+    fn msg_str(&self, msg: &str) -> Arc<String> {
         let mut irecord = self.irecord.lock();
         irecord.mk_msg_str(msg);
         let msg = irecord.msg.as_ref().unwrap();
