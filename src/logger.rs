@@ -39,7 +39,7 @@ use levels::LogLevel;
 use record::Record;
 use record::imp::{SyncRecord, AsyncRecord, RecordMeta};
 use line_range;
-use line_range::{LineRangeBound, LineRangeSpec};
+use line_range::LineRangeSpec;
 use formatters::Formatter;
 use handlers::Handler;
 use config::Config;
@@ -150,7 +150,7 @@ impl RootLogger {
             return Err("Module not specified".to_string());
         }
 
-        let level = self.get_level(path, LineRangeBound::EOF.into());
+        let level = self.get_level_for_module(path);
 
         let lranges = if let Some(old) = self.loggers.get(path) {
             line_range::merge_spec(&old.lranges, &lranges)
@@ -169,15 +169,23 @@ impl RootLogger {
     }
 
     #[doc(hidden)]
-    #[inline(always)]
-    pub fn get_level(&self, path: &str, line: u32) -> LogLevel {
-        let eof: u32 = LineRangeBound::EOF.into();
+    pub fn get_level_for_module(&self, path: &str) -> LogLevel {
         let range = self.loggers.range::<str, _>((Unbounded, Included(path)));
         for (name, logger) in range.rev() {
             if path.starts_with(name) {
-                if line == eof || logger.lranges.is_empty() {
-                    return logger.level;
-                }
+                return logger.level;
+            }
+        }
+
+        global::get_level()
+    }
+
+    #[doc(hidden)]
+    #[inline(always)]
+    pub fn get_level(&self, path: &str, line: u32) -> LogLevel {
+        let range = self.loggers.range::<str, _>((Unbounded, Included(path)));
+        for (name, logger) in range.rev() {
+            if path.starts_with(name) {
                 for range in &logger.lranges {
                     if range.contains(line) {
                         return range.level;
@@ -349,6 +357,7 @@ mod tests {
     use super::*;
 
     use levels::LEVELS;
+    use line_range::LineRangeBound;
 
     use std::sync::Mutex;
     use std::ops::Deref;
