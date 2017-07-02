@@ -234,7 +234,7 @@ macro_rules! wp_get_level {
 
     ($logger:expr) => {{
         if $crate::global::has_loggers() {
-            __wp_read_root!(get_level($logger, $crate::EOF.into()))
+            __wp_read_root!(get_level_for_module($logger))
         } else {
             $crate::global::get_level()
         }
