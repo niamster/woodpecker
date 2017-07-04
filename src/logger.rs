@@ -25,7 +25,7 @@ extern crate thread_id;
 
 use std::ops::Deref;
 use std::mem;
-use std::sync::{Arc, Once, ONCE_INIT};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering,
                         ATOMIC_USIZE_INIT, ATOMIC_BOOL_INIT};
 use std::collections::BTreeMap;
@@ -274,41 +274,37 @@ fn lthread(root: Arc<RwLock<RootLogger>>, queues: Arc<QVec>) {
 }
 
 #[inline(always)]
-fn root() -> Arc<RwLock<RootLogger>> {
+fn mkroot() -> Arc<RwLock<RootLogger>> {
     static mut ROOT: *const Arc<RwLock<RootLogger>> = 0 as *const Arc<RwLock<RootLogger>>;
-    static ONCE: Once = ONCE_INIT;
-    unsafe {
-        ONCE.call_once(|| {
-            let mut queues: QVec = mem::uninitialized();
-            for queue in queues.iter_mut() {
-                let z = mem::replace(queue, SegQueue::new());
-                mem::forget(z);
-            }
-            let queues = Arc::new(queues);
+    let mut queues: QVec = unsafe { mem::uninitialized() };
+    for queue in queues.iter_mut() {
+        let z = mem::replace(queue, SegQueue::new());
+        mem::forget(z);
+    }
+    let queues = Arc::new(queues);
 
-            assert!(IS_INIT.load(Ordering::Relaxed));
-            let root = Arc::new(RwLock::new(RootLogger::new(queues.clone())));
+    assert!(IS_INIT.load(Ordering::Relaxed));
+    let root = Arc::new(RwLock::new(RootLogger::new(queues.clone())));
 
-            if LOG_THREAD.load(Ordering::Relaxed) {
-                let root = root.clone();
-                thread::spawn(move || {
-                    lthread(root, queues);
-                });
-                { // warm up lazy statics
-                    sync();
-                }
-            }
-
-            ROOT = mem::transmute(Box::new(root));
+    if LOG_THREAD.load(Ordering::Relaxed) {
+        let root = root.clone();
+        thread::spawn(move || {
+            lthread(root, queues);
         });
+        { // warm up lazy statics
+            sync();
+        }
+    }
 
+    unsafe {
+        ROOT = mem::transmute(Box::new(root));
         (*ROOT).clone()
     }
 }
 
 lazy_static! {
     #[doc(hidden)]
-    pub static ref ROOT: Arc<RwLock<RootLogger>> = root();
+    pub static ref ROOT: Arc<RwLock<RootLogger>> = mkroot();
 }
 
 /// Ensures that the logging queue is completely consumed by the log thread.
@@ -359,6 +355,7 @@ mod tests {
     use levels::LEVELS;
     use line_range::LineRangeBound;
 
+    use std::sync::{Once, ONCE_INIT};
     use std::sync::Mutex;
     use std::ops::Deref;
     use std::thread;
