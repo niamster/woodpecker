@@ -79,10 +79,13 @@ macro_rules! log {
         };
         if $crate::global::has_loggers() {
             let path = this_file!();
-            let root = $crate::logger::ROOT.read();
-            if root.get_level(path, line!()) <= $level {
-                root.log(&RECORD, format_args!($($arg)*));
-            }
+            $crate::logger::LROOT.with(|root| {
+                $crate::logger::uproot(&root);
+                let root = root.borrow();
+                if root.get_level(path, line!()) <= $level {
+                    root.log(&RECORD, format_args!($($arg)*));
+                }
+            });
         } else {
             if $crate::global::get_level() <= $level {
                 __wp_read_root!(log(&RECORD, format_args!($($arg)*)));

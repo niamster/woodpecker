@@ -26,7 +26,10 @@ macro_rules! __wp_write_root {
 #[macro_export]
 macro_rules! __wp_read_root {
     ($func:ident($($arg:expr),*)) => {{
-        let root = $crate::logger::ROOT.read();
-        root.$func($($arg),*)
+        $crate::logger::LROOT.with(|root| {
+            $crate::logger::uproot(&root);
+            let root = root.borrow();
+            root.$func($($arg),*)
+        })
     }};
 }

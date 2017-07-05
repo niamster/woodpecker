@@ -28,6 +28,7 @@ use std::mem;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering,
                         ATOMIC_USIZE_INIT, ATOMIC_BOOL_INIT};
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::Bound::{Included, Excluded, Unbounded};
 use std::time::{Duration, Instant};
@@ -49,6 +50,7 @@ const QNUM: usize = 64;
 
 static LOG_THREAD: AtomicBool = ATOMIC_BOOL_INIT;
 static IS_INIT: AtomicBool = ATOMIC_BOOL_INIT;
+static RGEN: AtomicUsize = ATOMIC_USIZE_INIT;
 lazy_static! {
     static ref SENT: [CachePadded<AtomicUsize>; QNUM] = {
         let mut sent: [CachePadded<AtomicUsize>; QNUM] = unsafe { mem::uninitialized() };
@@ -63,17 +65,17 @@ lazy_static! {
 
 type QVec = [SegQueue<AsyncRecord>; QNUM];
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ModuleSpec {
     level: LogLevel,
-    lranges: Vec<LineRangeSpec>,
+    lranges: Arc<Vec<LineRangeSpec>>,
 }
 
 #[doc(hidden)]
 pub struct RootLogger {
     loggers: CachePadded<BTreeMap<String, ModuleSpec>>,
+    handlers: CachePadded<Vec<Arc<Handler>>>,
     formatter: CachePadded<Arc<Formatter>>,
-    handlers: CachePadded<Vec<Handler>>,
     queue: CachePadded<Arc<QVec>>,
 }
 
@@ -87,25 +89,36 @@ impl RootLogger {
         }
     }
 
+    #[doc(hidden)]
+    pub fn update(&mut self, right: &RootLogger) {
+        self.loggers = CachePadded::new(right.loggers.clone());
+        self.handlers = CachePadded::new(right.handlers.clone());
+        self.formatter = CachePadded::new(right.formatter.clone());
+    }
+
     fn reset(&mut self) {
         self.loggers.clear();
         self.formatter = CachePadded::new(Arc::new(Box::new(::formatters::default::formatter)));
         self.handlers.clear();
+        RGEN.fetch_add(1, Ordering::Relaxed);
     }
 
     #[doc(hidden)]
     pub fn reset_loggers(&mut self) {
-        self.loggers.clear()
+        self.loggers.clear();
+        RGEN.fetch_add(1, Ordering::Relaxed);
     }
 
     #[doc(hidden)]
     pub fn handler(&mut self, handler: Handler) {
-        self.handlers.push(handler);
+        self.handlers.push(Arc::new(handler));
+        RGEN.fetch_add(1, Ordering::Relaxed);
     }
 
     #[doc(hidden)]
     pub fn formatter(&mut self, formatter: Formatter) {
         self.formatter = CachePadded::new(Arc::new(formatter));
+        RGEN.fetch_add(1, Ordering::Relaxed);
     }
 
     fn remove_children(&mut self, path: &str) {
@@ -133,10 +146,11 @@ impl RootLogger {
         self.remove_children(path);
         let logger = ModuleSpec {
             level: level,
-            lranges: Vec::new(),
+            lranges: Arc::new(Vec::new()),
         };
         self.loggers.insert(path.to_string(), logger);
         global::set_loggers(true);
+        RGEN.fetch_add(1, Ordering::Relaxed);
 
         Ok(())
     }
@@ -160,10 +174,11 @@ impl RootLogger {
 
         let logger = ModuleSpec {
             level: level,
-            lranges: lranges,
+            lranges: Arc::new(lranges),
         };
         self.loggers.insert(path.to_string(), logger);
         global::set_loggers(true);
+        RGEN.fetch_add(1, Ordering::Relaxed);
 
         Ok(())
     }
@@ -186,7 +201,7 @@ impl RootLogger {
         let range = self.loggers.range::<str, _>((Unbounded, Included(path)));
         for (name, logger) in range.rev() {
             if path.starts_with(name) {
-                for range in &logger.lranges {
+                for range in logger.lranges.deref() {
                     if range.contains(line) {
                         return range.level;
                     }
@@ -273,9 +288,11 @@ fn lthread(root: Arc<RwLock<RootLogger>>, queues: Arc<QVec>) {
     }
 }
 
+type RL = Arc<RwLock<RootLogger>>;
+
 #[inline(always)]
-fn mkroot() -> Arc<RwLock<RootLogger>> {
-    static mut ROOT: *const Arc<RwLock<RootLogger>> = 0 as *const Arc<RwLock<RootLogger>>;
+fn mkroot() -> RL {
+    static mut ROOT: *const RL = 0 as *const RL;
     let mut queues: QVec = unsafe { mem::uninitialized() };
     for queue in queues.iter_mut() {
         let z = mem::replace(queue, SegQueue::new());
@@ -302,9 +319,27 @@ fn mkroot() -> Arc<RwLock<RootLogger>> {
     }
 }
 
+#[doc(hidden)]
+#[inline(always)]
+pub fn uproot(root: &RefCell<RootLogger>) {
+    let rgen = RGEN.load(Ordering::Relaxed);
+    LGEN.with(|lgen| {
+        if *lgen.borrow() != rgen {
+            *lgen.borrow_mut() = rgen;
+            root.borrow_mut().update(&ROOT.read());
+        }
+    });
+}
+
+thread_local! (
+    #[doc(hidden)]
+    pub static LROOT: RefCell<RootLogger> = RefCell::new(RootLogger::new(ROOT.read().queue.clone()));
+    static LGEN: RefCell<usize> = RefCell::new(0);
+);
+
 lazy_static! {
     #[doc(hidden)]
-    pub static ref ROOT: Arc<RwLock<RootLogger>> = mkroot();
+    pub static ref ROOT: RL = mkroot();
 }
 
 /// Ensures that the logging queue is completely consumed by the log thread.

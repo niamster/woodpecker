@@ -143,6 +143,13 @@ mod wpb {
         wp_set_level!(wp::LogLevel::INFO, this_file!()).unwrap();
     }
 
+    fn foo_loggers_this_file_with_lines() {
+        foo_loggers();
+        let (bof, eof): (u32, u32) = (wp::BOF.into(), wp::EOF.into());
+        wp_set_level!(wp::LogLevel::CRITICAL, this_file!(), [(bof + 1, bof + 10)]).unwrap();
+        wp_set_level!(wp::LogLevel::INFO, this_file!(), [(bof + 11, eof - 1)]).unwrap();
+    }
+
     // No output, single thread
     fn bench_no_output_single_thread(b: &mut Bencher) {
         jail!(
@@ -175,6 +182,14 @@ mod wpb {
         );
     }
 
+    fn bench_no_output_sub_this_file_with_lines_single_thread(b: &mut Bencher) {
+        jail!(
+            b,
+            foo_loggers_this_file_with_lines(),
+            doutput!()
+        );
+    }
+
     // No output, multi thread
     fn bench_no_output_multi_thread(b: &mut Bencher) {
         tjail!(
@@ -203,6 +218,14 @@ mod wpb {
         tjail!(
             b,
             foo_loggers_this_file(),
+            doutput!()
+        );
+    }
+
+    fn bench_no_output_sub_this_file_with_lines_multi_thread(b: &mut Bencher) {
+        tjail!(
+            b,
+            foo_loggers_this_file_with_lines(),
             doutput!()
         );
     }
@@ -244,6 +267,17 @@ mod wpb {
             {
                 drop_output();
                 foo_loggers_this_file();
+            },
+            coutput!()
+        );
+    }
+
+    fn bench_drop_output_sub_this_file_with_lines_single_thread(b: &mut Bencher) {
+        jail!(
+            b,
+            {
+                drop_output();
+                foo_loggers_this_file_with_lines();
             },
             coutput!()
         );
@@ -291,6 +325,17 @@ mod wpb {
         );
     }
 
+    fn bench_drop_output_sub_this_file_with_lines_multi_thread(b: &mut Bencher) {
+        tjail!(
+            b,
+            {
+                drop_output();
+                foo_loggers_this_file_with_lines();
+            },
+            coutput!()
+        );
+    }
+
     // Drop formatted output, single thread
     fn bench_drop_formatted_output_single_thread(b: &mut Bencher) {
         jail!(
@@ -328,6 +373,17 @@ mod wpb {
             {
                 drop_formatted_output();
                 foo_loggers_this_file();
+            },
+            coutput!()
+        );
+    }
+
+    fn bench_drop_formatted_output_sub_this_file_with_lines_single_thread(b: &mut Bencher) {
+        jail!(
+            b,
+            {
+                drop_formatted_output();
+                foo_loggers_this_file_with_lines();
             },
             coutput!()
         );
@@ -375,6 +431,17 @@ mod wpb {
         );
     }
 
+    fn bench_drop_formatted_output_sub_this_file_with_lines_multi_thread(b: &mut Bencher) {
+        tjail!(
+            b,
+            {
+                drop_formatted_output();
+                foo_loggers_this_file_with_lines();
+            },
+            coutput!()
+        );
+    }
+
     fn bench_stub(_: &mut Bencher) {
     }
 
@@ -384,31 +451,37 @@ mod wpb {
         bench_no_output_single_thread,
         bench_no_output_sub_this_file_single_thread,
         bench_no_output_sub_this_module_single_thread,
+        bench_no_output_sub_this_file_with_lines_single_thread,
         bench_no_output_sub_other_single_thread,
 
         bench_drop_output_single_thread,
         bench_drop_output_sub_this_module_single_thread,
         bench_drop_output_sub_this_file_single_thread,
+        bench_drop_output_sub_this_file_with_lines_single_thread,
         bench_drop_output_sub_other_single_thread,
 
         bench_drop_formatted_output_single_thread,
         bench_drop_formatted_output_sub_this_module_single_thread,
         bench_drop_formatted_output_sub_this_file_single_thread,
+        bench_drop_formatted_output_sub_this_file_with_lines_single_thread,
         bench_drop_formatted_output_sub_other_single_thread,
 
         bench_no_output_multi_thread,
-        bench_no_output_sub_this_file_multi_thread,
         bench_no_output_sub_this_module_multi_thread,
+        bench_no_output_sub_this_file_multi_thread,
+        bench_no_output_sub_this_file_with_lines_multi_thread,
         bench_no_output_sub_other_multi_thread,
 
         bench_drop_output_multi_thread,
         bench_drop_output_sub_this_module_multi_thread,
         bench_drop_output_sub_this_file_multi_thread,
+        bench_drop_output_sub_this_file_with_lines_multi_thread,
         bench_drop_output_sub_other_multi_thread,
 
         bench_drop_formatted_output_multi_thread,
         bench_drop_formatted_output_sub_this_module_multi_thread,
         bench_drop_formatted_output_sub_this_file_multi_thread,
+        bench_drop_formatted_output_sub_this_file_with_lines_multi_thread,
         bench_drop_formatted_output_sub_other_multi_thread,
 
         bench_stub
