@@ -25,6 +25,8 @@ use std::sync::Arc;
 use std::fmt;
 use std::fmt::Write;
 
+use std::marker::PhantomData;
+
 use formatters::Formatter;
 use levels::LogLevel;
 use record::Record;
@@ -143,6 +145,7 @@ pub(crate) struct SyncRecord<'a> {
     args: fmt::Arguments<'a>,
     precord: RecordLazyMeta,
     ts: time::Timespec,
+    _oibit_remover: PhantomData<*mut Fn()>,
 }
 
 impl<'a> SyncRecord<'a> {
@@ -156,6 +159,7 @@ impl<'a> SyncRecord<'a> {
             ts: ts,
             args: args,
             precord: RecordLazyMeta::new(formatter),
+            _oibit_remover: PhantomData,
         }
     }
 }
