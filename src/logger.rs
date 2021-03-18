@@ -30,7 +30,7 @@ use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering,
                         ATOMIC_USIZE_INIT, ATOMIC_BOOL_INIT};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::collections::Bound::{Included, Excluded, Unbounded};
+use std::ops::Bound::{Included, Excluded, Unbounded};
 use std::time::{Duration, Instant};
 use std::thread;
 use std::fmt;
